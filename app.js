@@ -119,48 +119,138 @@
   function getSubcategories(cat) { return CATEGORIES[cat]?.subcategories || {}; }
 
   // ============================================================
-  //  DATA STORE
+  //  DATA STORE — IndexedDB for media, localStorage for metadata
+  //  IndexedDB provides 50MB-hundreds of MB of storage,
+  //  solving the localStorage 5MB limit that blocked uploads.
   // ============================================================
   const STORAGE_KEY = 'alpha_portfolio_works_v4';
+  const DB_NAME = 'tangyuan_portfolio';
+  const DB_VERSION = 1;
+  const MEDIA_STORE = 'media';
 
-  function loadWorks() {
+  let db = null; // IndexedDB instance
+
+  // Open / create IndexedDB
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = (e) => {
+        const database = e.target.result;
+        if (!database.objectStoreNames.contains(MEDIA_STORE)) {
+          database.createObjectStore(MEDIA_STORE, { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = (e) => {
+        db = e.target.result;
+        resolve(db);
+      };
+      request.onerror = (e) => {
+        console.error('IndexedDB open failed:', e);
+        reject(e);
+      };
+    });
+  }
+
+  // Save a single media blob to IndexedDB
+  function saveMedia(id, src) {
+    return new Promise((resolve, reject) => {
+      if (!db) { resolve(); return; }
+      const tx = db.transaction(MEDIA_STORE, 'readwrite');
+      const store = tx.objectStore(MEDIA_STORE);
+      store.put({ id, src });
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => { console.error('saveMedia error:', e); reject(e); };
+    });
+  }
+
+  // Load a single media blob from IndexedDB
+  function loadMedia(id) {
+    return new Promise((resolve, reject) => {
+      if (!db) { resolve(null); return; }
+      const tx = db.transaction(MEDIA_STORE, 'readonly');
+      const store = tx.objectStore(MEDIA_STORE);
+      const req = store.get(id);
+      req.onsuccess = () => resolve(req.result ? req.result.src : null);
+      req.onerror = (e) => { console.error('loadMedia error:', e); resolve(null); };
+    });
+  }
+
+  // Load all media from IndexedDB into a map { id: src }
+  function loadAllMedia() {
+    return new Promise((resolve, reject) => {
+      if (!db) { resolve({}); return; }
+      const tx = db.transaction(MEDIA_STORE, 'readonly');
+      const store = tx.objectStore(MEDIA_STORE);
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const map = {};
+        (req.result || []).forEach(item => { map[item.id] = item.src; });
+        resolve(map);
+      };
+      req.onerror = (e) => { console.error('loadAllMedia error:', e); resolve({}); };
+    });
+  }
+
+  // Delete media from IndexedDB
+  function deleteMedia(id) {
+    return new Promise((resolve) => {
+      if (!db) { resolve(); return; }
+      const tx = db.transaction(MEDIA_STORE, 'readwrite');
+      const store = tx.objectStore(MEDIA_STORE);
+      store.delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  }
+
+  // Save multiple media items in one transaction
+  function saveMediaBatch(items) {
+    return new Promise((resolve, reject) => {
+      if (!db || items.length === 0) { resolve(); return; }
+      const tx = db.transaction(MEDIA_STORE, 'readwrite');
+      const store = tx.objectStore(MEDIA_STORE);
+      items.forEach(({ id, src }) => store.put({ id, src }));
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => { console.error('saveMediaBatch error:', e); reject(e); };
+    });
+  }
+
+  // ---- Metadata in localStorage (small JSON, no media) ----
+  function loadWorksMeta() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
     catch { return []; }
   }
-  function saveWorks(w) {
+  function saveWorksMeta(w) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(w));
+      // Strip src from metadata — media lives in IndexedDB
+      const meta = w.map(({ src, ...rest }) => rest);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(meta));
       return true;
     } catch (e) {
       console.error('localStorage save failed:', e);
-      showToast('存储空间不足，请删除一些旧作品后重试');
+      showToast('元数据保存失败');
       return false;
     }
   }
 
-  // Estimate localStorage usage (in bytes)
-  function getStorageUsage() {
-    let total = 0;
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      total += key.length + (localStorage.getItem(key) || '').length;
-    }
-    return total * 2; // UTF-16 = 2 bytes per char
+  // Legacy compat wrapper — used by existing code
+  function saveWorks(w) {
+    return saveWorksMeta(w);
   }
 
   // Compress image using canvas — returns a Promise<dataURL>
+  // Always outputs JPEG for photos (much smaller than PNG base64)
   function compressImage(dataURL, maxWidth, maxHeight, quality) {
     maxWidth = maxWidth || 1920;
     maxHeight = maxHeight || 1920;
-    quality = quality || 0.8;
+    quality = quality || 0.75;
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
         let w = img.naturalWidth;
         let h = img.naturalHeight;
 
-        // Scale down if exceeds max dimensions
         if (w > maxWidth || h > maxHeight) {
           const ratio = Math.min(maxWidth / w, maxHeight / h);
           w = Math.round(w * ratio);
@@ -173,24 +263,53 @@
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, w, h);
 
-        // Use JPEG for better compression (unless it's a PNG with transparency)
-        const outputType = dataURL.includes('data:image/png') ? 'image/png' : 'image/jpeg';
-        const compressed = canvas.toDataURL(outputType, quality);
+        // Always use JPEG for better compression (photos don't need transparency)
+        const compressed = canvas.toDataURL('image/jpeg', quality);
 
-        // Only use compressed if it's actually smaller
         resolve(compressed.length < dataURL.length ? compressed : dataURL);
       };
-      img.onerror = () => resolve(dataURL); // Fallback to original
+      img.onerror = () => resolve(dataURL);
       img.src = dataURL;
     });
   }
 
-  // Migrate: clear old v3 data
+  // Migrate old data: move media from localStorage to IndexedDB
+  async function migrateToIndexedDB() {
+    const oldData = localStorage.getItem(STORAGE_KEY);
+    if (!oldData) return;
+
+    try {
+      const oldWorks = JSON.parse(oldData);
+      // Check if old data contains src (media embedded in localStorage)
+      const hasEmbeddedMedia = oldWorks.some(w => w.src && w.src.length > 500);
+      if (!hasEmbeddedMedia) return; // Already migrated or no media
+
+      console.log('Migrating media from localStorage to IndexedDB...');
+      const mediaItems = [];
+      oldWorks.forEach(w => {
+        if (w.src && w.src.length > 500) {
+          mediaItems.push({ id: w.id, src: w.src });
+        }
+      });
+
+      if (mediaItems.length > 0) {
+        await saveMediaBatch(mediaItems);
+      }
+
+      // Save metadata without src
+      saveWorksMeta(oldWorks);
+      console.log(`Migration complete: ${mediaItems.length} media items moved to IndexedDB`);
+    } catch (e) {
+      console.error('Migration failed:', e);
+    }
+  }
+
+  // Clear old v3 data
   if (localStorage.getItem('alpha_portfolio_works_v3')) {
     localStorage.removeItem('alpha_portfolio_works_v3');
   }
 
-  let works = loadWorks();
+  let works = []; // Will be populated after IndexedDB init
 
   // Demo works
   const DEMO_WORKS = [
@@ -246,10 +365,7 @@
     },
   ];
 
-  if (works.length === 0) {
-    works = [...DEMO_WORKS];
-    saveWorks(works);
-  }
+  // Demo init is deferred to after IndexedDB opens — see initApp()
 
   // ============================================================
   //  DOM REFS
@@ -860,21 +976,9 @@
   }
 
   // Submit upload
-  $('#uploadSubmit').addEventListener('click', () => {
+  $('#uploadSubmit').addEventListener('click', async () => {
     if (pendingFiles.length === 0) {
       showToast('请先选择文件');
-      return;
-    }
-
-    // Pre-check: estimate if the new data will fit in localStorage
-    const newDataSize = pendingFiles.reduce((sum, f) => sum + f.src.length, 0) * 2; // UTF-16
-    const currentUsage = getStorageUsage();
-    const STORAGE_LIMIT = 4.5 * 1024 * 1024; // ~4.5MB safe limit (most browsers allow 5-10MB)
-
-    if (currentUsage + newDataSize > STORAGE_LIMIT) {
-      const usedMB = (currentUsage / 1024 / 1024).toFixed(1);
-      const newMB = (newDataSize / 1024 / 1024).toFixed(1);
-      showToast(`存储空间不足（已用${usedMB}MB，新增${newMB}MB）。请删除一些旧作品后重试`);
       return;
     }
 
@@ -884,25 +988,43 @@
     const mediaType = $('#uploadMediaType').value;
     const desc = $('#uploadDesc').value.trim();
 
-    // Keep a backup in case save fails
-    const backupWorks = [...works];
+    const newWorks = [];
+    const mediaItems = [];
 
     pendingFiles.forEach((f, i) => {
-      works.unshift({
-        id: 'w' + Date.now() + '_' + i,
+      const id = 'w' + Date.now() + '_' + i;
+      newWorks.push({
+        id,
         title: pendingFiles.length === 1 ? title : `${title} (${i + 1})`,
         category,
         subcategory,
         mediaType: f.type || mediaType,
         desc,
-        src: f.src,
+        src: f.src, // Keep in memory for immediate display
       });
+      mediaItems.push({ id, src: f.src });
     });
 
-    const saved = saveWorks(works);
+    // Save media to IndexedDB
+    try {
+      await saveMediaBatch(mediaItems);
+    } catch (e) {
+      showToast('图片存储失败，请重试');
+      console.error('IndexedDB save failed:', e);
+      return;
+    }
+
+    // Prepend new works to array
+    works = [...newWorks, ...works];
+
+    // Save metadata (without src) to localStorage
+    const saved = saveWorksMeta(works);
     if (!saved) {
-      // Rollback on failure
-      works = backupWorks;
+      // Rollback media from IndexedDB
+      for (const item of mediaItems) {
+        await deleteMedia(item.id);
+      }
+      works = works.slice(newWorks.length); // Remove new items
       return;
     }
 
@@ -990,13 +1112,14 @@
   });
 
   // Delete from lightbox
-  $('#lbDelete').addEventListener('click', () => {
+  $('#lbDelete').addEventListener('click', async () => {
     if (!isAdminAuthenticated) return;
     const w = lbFiltered[lbIndex];
     if (!w) return;
     if (!confirm(`确定要删除「${w.title}」吗？`)) return;
     works = works.filter(x => x.id !== w.id);
     saveWorks(works);
+    await deleteMedia(w.id); // Remove media from IndexedDB
     closeLightbox();
     renderSubcategories();
     renderGallery();
@@ -1278,13 +1401,48 @@
   }
 
   // ============================================================
-  //  INIT
+  //  INIT — Async: open IndexedDB, migrate, load, render
   // ============================================================
-  renderSubcategories();
-  renderGallery();
-  buildHeroSlides();
-  startSlideshow();
-  resetIdleTimer();
-  setupSectionReveals();
+  async function initApp() {
+    try {
+      await openDB();
+    } catch (e) {
+      console.warn('IndexedDB unavailable, falling back to localStorage-only mode');
+    }
+
+    // Migrate old localStorage data (with embedded media) to IndexedDB
+    await migrateToIndexedDB();
+
+    // Load metadata from localStorage
+    works = loadWorksMeta();
+
+    // If works have no src yet, load media from IndexedDB
+    if (works.length > 0 && !works[0].src) {
+      const mediaMap = await loadAllMedia();
+      works.forEach(w => {
+        if (mediaMap[w.id]) {
+          w.src = mediaMap[w.id];
+        }
+      });
+    }
+
+    // Demo works — initialize if empty
+    if (works.length === 0) {
+      works = [...DEMO_WORKS];
+      // Save demo media to IndexedDB
+      const demoMedia = works.map(w => ({ id: w.id, src: w.src }));
+      try { await saveMediaBatch(demoMedia); } catch(e) { /* SVGs are small, fine */ }
+      saveWorksMeta(works);
+    }
+
+    renderSubcategories();
+    renderGallery();
+    buildHeroSlides();
+    startSlideshow();
+    resetIdleTimer();
+    setupSectionReveals();
+  }
+
+  initApp();
 
 })();
