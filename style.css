@@ -1228,17 +1228,13 @@ img { display: block; max-width: 100%; }
   color: var(--text-muted);
 }
 .contact-card-value {
-  font-family: var(--font-elegant);
+  font-family: 'Inter', var(--font-sans);
   font-size: 15px; color: #fff;
-  word-break: break-all;
-  user-select: text;
-}
-/* Email value — use Inter for clear, legible numerals while keeping elegant weight/size */
-.contact-card-value--email {
-  font-family: 'Inter', var(--font-elegant);
   font-weight: 400;
   letter-spacing: 0.5px;
   font-variant-numeric: lining-nums tabular-nums;
+  word-break: break-all;
+  user-select: text;
 }
 
 .footer {
