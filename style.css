@@ -1233,6 +1233,13 @@ img { display: block; max-width: 100%; }
   word-break: break-all;
   user-select: text;
 }
+/* Email value — use Inter for clear, legible numerals while keeping elegant weight/size */
+.contact-card-value--email {
+  font-family: 'Inter', var(--font-elegant);
+  font-weight: 400;
+  letter-spacing: 0.5px;
+  font-variant-numeric: lining-nums tabular-nums;
+}
 
 .footer {
   padding: 24px 0;
