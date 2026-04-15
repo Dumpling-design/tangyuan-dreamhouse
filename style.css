@@ -989,11 +989,45 @@ img { display: block; max-width: 100%; }
   font-family: var(--font-elegant);
   font-size: 12px; letter-spacing: 2px;
   cursor: pointer; transition: all .3s;
+  position: relative;
 }
 .sub-tag:hover { border-color: rgba(255,255,255,.2); color: #fff; }
 .sub-tag.active {
   background: rgba(255,255,255,.06);
   border-color: rgba(255,255,255,.15); color: #fff;
+}
+
+/* Sub-tag delete button (×) — visible on admin hover */
+.sub-tag-del {
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  width: 16px; height: 16px;
+  margin-left: 6px;
+  border-radius: 50%;
+  font-size: 13px; line-height: 1;
+  color: rgba(255,255,255,.4);
+  background: rgba(255,255,255,.06);
+  transition: all .2s;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.sub-tag-del:hover {
+  color: #ff6b6b;
+  background: rgba(255,100,100,.15);
+}
+
+/* Sub-tag add (+) button */
+.sub-tag-add {
+  border-style: dashed;
+  border-color: rgba(255,255,255,.15);
+  color: rgba(255,255,255,.4);
+  letter-spacing: 1px;
+  font-size: 12px;
+}
+.sub-tag-add:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(200,164,90,.06);
 }
 
 /* ============================================================

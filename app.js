@@ -70,52 +70,120 @@
   checkAdminSession();
 
   // ============================================================
-  //  CATEGORY SYSTEM
+  //  CATEGORY SYSTEM — dynamic subcategories (persisted)
   // ============================================================
-  const CATEGORIES = {
+  const CUSTOM_SUBS_KEY = 'tangyuan_custom_subcategories';
+
+  // Default subcategories — used as base, user additions are layered on top
+  const DEFAULT_SUBCATEGORIES = {
     photography: {
-      label: '摄影',
-      icon: 'camera',
-      subcategories: {
-        landscape: '风光', portrait: '人像', street: '街拍',
-        architecture: '建筑', product: '产品', nature: '自然',
-        travel: '旅行', night: '夜景', macro: '微距',
-        documentary: '纪实', other_photo: '其他',
-      }
+      landscape: '风光', portrait: '人像', street: '街拍',
+      architecture: '建筑', product: '产品', nature: '自然',
+      travel: '旅行', night: '夜景', macro: '微距',
+      documentary: '纪实', other_photo: '其他',
     },
     painting: {
-      label: '绘画',
-      icon: 'palette',
-      subcategories: {
-        concept_art: '概念艺术', illustration: '插画',
-        digital_painting: '数字绘画', traditional: '传统绘画',
-        sketch: '速写/素描', character: '角色设计',
-        environment: '环境/场景', matte_painting: '数字景观',
-        fanart: '同人创作', other_paint: '其他',
-      }
+      concept_art: '概念艺术', illustration: '插画',
+      digital_painting: '数字绘画', traditional: '传统绘画',
+      sketch: '速写/素描', character: '角色设计',
+      environment: '环境/场景', matte_painting: '数字景观',
+      fanart: '同人创作', other_paint: '其他',
     },
     design: {
-      label: '设计',
-      icon: 'layers',
-      subcategories: {
-        interior: '室内设计', graphic: '平面设计',
-        ui_ux: 'UI/UX', branding: '品牌设计',
-        poster: '海报', packaging: '包装',
-        motion: '动态设计', '3d': '3D 设计',
-        typography: '字体设计', other_design: '其他',
-      }
+      interior: '室内设计', graphic: '平面设计',
+      ui_ux: 'UI/UX', branding: '品牌设计',
+      poster: '海报', packaging: '包装',
+      motion: '动态设计', '3d': '3D 设计',
+      typography: '字体设计', other_design: '其他',
     },
     video: {
-      label: '视频',
-      icon: 'video',
-      subcategories: {
-        short_film: '短片', vlog: 'Vlog', music_video: 'MV',
-        commercial: '商业广告', animation: '动画',
-        documentary_film: '纪录片', showreel: 'Showreel',
-        timelapse: '延时摄影', bts: '幕后花絮', other_video: '其他',
-      }
+      short_film: '短片', vlog: 'Vlog', music_video: 'MV',
+      commercial: '商业广告', animation: '动画',
+      documentary_film: '纪录片', showreel: 'Showreel',
+      timelapse: '延时摄影', bts: '幕后花絮', other_video: '其他',
     }
   };
+
+  const CATEGORIES = {
+    photography: { label: '摄影', icon: 'camera', subcategories: {} },
+    painting:    { label: '绘画', icon: 'palette', subcategories: {} },
+    design:      { label: '设计', icon: 'layers', subcategories: {} },
+    video:       { label: '视频', icon: 'video', subcategories: {} },
+  };
+
+  // Load custom subcategories from localStorage and merge with defaults
+  function loadCustomSubcategories() {
+    let custom = {};
+    try { custom = JSON.parse(localStorage.getItem(CUSTOM_SUBS_KEY)) || {}; } catch { custom = {}; }
+    // custom format: { photography: { added: {key:label,...}, removed: [key,...] }, ... }
+    for (const catKey of Object.keys(CATEGORIES)) {
+      const base = { ...DEFAULT_SUBCATEGORIES[catKey] };
+      const patch = custom[catKey] || {};
+      // Remove user-deleted keys
+      if (Array.isArray(patch.removed)) {
+        patch.removed.forEach(k => delete base[k]);
+      }
+      // Add user-added keys
+      if (patch.added && typeof patch.added === 'object') {
+        Object.assign(base, patch.added);
+      }
+      CATEGORIES[catKey].subcategories = base;
+    }
+  }
+
+  function saveCustomSubcategories() {
+    // Compute diff against defaults
+    const custom = {};
+    for (const catKey of Object.keys(CATEGORIES)) {
+      const defaults = DEFAULT_SUBCATEGORIES[catKey];
+      const current = CATEGORIES[catKey].subcategories;
+      const added = {};
+      const removed = [];
+      // Find additions (keys in current but not in defaults, or label changed)
+      for (const [k, v] of Object.entries(current)) {
+        if (!(k in defaults)) {
+          added[k] = v;
+        }
+      }
+      // Find removals (keys in defaults but not in current)
+      for (const k of Object.keys(defaults)) {
+        if (!(k in current)) {
+          removed.push(k);
+        }
+      }
+      if (Object.keys(added).length > 0 || removed.length > 0) {
+        custom[catKey] = {};
+        if (Object.keys(added).length > 0) custom[catKey].added = added;
+        if (removed.length > 0) custom[catKey].removed = removed;
+      }
+    }
+    try {
+      localStorage.setItem(CUSTOM_SUBS_KEY, JSON.stringify(custom));
+    } catch (e) {
+      console.error('Failed to save custom subcategories:', e);
+    }
+  }
+
+  // Add a subcategory to a category
+  function addSubcategory(catKey, subKey, subLabel) {
+    if (!CATEGORIES[catKey]) return false;
+    if (CATEGORIES[catKey].subcategories[subKey]) return false; // already exists
+    CATEGORIES[catKey].subcategories[subKey] = subLabel;
+    saveCustomSubcategories();
+    return true;
+  }
+
+  // Remove a subcategory from a category
+  function removeSubcategory(catKey, subKey) {
+    if (!CATEGORIES[catKey]) return false;
+    if (!(subKey in CATEGORIES[catKey].subcategories)) return false;
+    delete CATEGORIES[catKey].subcategories[subKey];
+    saveCustomSubcategories();
+    return true;
+  }
+
+  // Initialize on load
+  loadCustomSubcategories();
 
   function getCategoryLabel(cat) { return CATEGORIES[cat]?.label || cat; }
   function getSubcategoryLabel(cat, sub) { return CATEGORIES[cat]?.subcategories?.[sub] || sub || ''; }
@@ -647,20 +715,60 @@
     let html = '<button class="sub-tag active" data-sub="all">全部</button>';
     for (const [key, label] of Object.entries(subs)) {
       const count = works.filter(w => w.category === currentCategory && w.subcategory === key).length;
-      if (count > 0) {
-        html += `<button class="sub-tag" data-sub="${key}">${label} <span style="opacity:.5;font-size:10px">${count}</span></button>`;
-      }
+      const countHtml = count > 0 ? ` <span style="opacity:.5;font-size:10px">${count}</span>` : '';
+      // Admin gets a delete button on each subcategory
+      const delBtn = isAdminAuthenticated
+        ? `<span class="sub-tag-del" data-cat="${currentCategory}" data-sub="${key}" title="删除子分类">&times;</span>`
+        : '';
+      html += `<button class="sub-tag" data-sub="${key}">${label}${countHtml}${delBtn}</button>`;
+    }
+    // Admin gets an "add" button at the end
+    if (isAdminAuthenticated) {
+      html += `<button class="sub-tag sub-tag-add" id="addSubcatBtn" title="添加子分类">+ 添加</button>`;
     }
     subcategoryBar.innerHTML = html;
 
-    subcategoryBar.querySelectorAll('.sub-tag').forEach(tag => {
-      tag.addEventListener('click', () => {
+    subcategoryBar.querySelectorAll('.sub-tag:not(.sub-tag-add)').forEach(tag => {
+      tag.addEventListener('click', (e) => {
+        if (e.target.classList.contains('sub-tag-del')) return; // handled separately
         subcategoryBar.querySelectorAll('.sub-tag').forEach(t => t.classList.remove('active'));
         tag.classList.add('active');
         currentSubcategory = tag.dataset.sub;
         renderGallery();
       });
     });
+
+    // Delete subcategory handlers
+    subcategoryBar.querySelectorAll('.sub-tag-del').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const cat = btn.dataset.cat;
+        const sub = btn.dataset.sub;
+        const label = getSubcategoryLabel(cat, sub);
+        const usedCount = works.filter(w => w.category === cat && w.subcategory === sub).length;
+        let msg = `确定要删除子分类「${label}」吗？`;
+        if (usedCount > 0) {
+          msg += `\n\n⚠️ 当前有 ${usedCount} 件作品使用此子分类，删除后这些作品的子分类将显示为空。`;
+        }
+        if (!confirm(msg)) return;
+        removeSubcategory(cat, sub);
+        renderSubcategories();
+        // Refresh selects in open modals
+        if (uploadModal.classList.contains('open')) {
+          populateSubcategorySelect('uploadSubcategory', $('#uploadCategory').value);
+        }
+        if (editModal.classList.contains('open')) {
+          populateSubcategorySelect('editSubcategory', $('#editCategory').value);
+        }
+        showToast(`已删除子分类「${label}」`);
+      });
+    });
+
+    // Add subcategory button handler
+    const addBtn = document.getElementById('addSubcatBtn');
+    if (addBtn) {
+      addBtn.addEventListener('click', () => openAddSubcatModal(currentCategory));
+    }
   }
 
   // ============================================================
@@ -811,6 +919,7 @@
     if (authenticateAdmin(pw, adminRemember.checked)) {
       closeAdminModal();
       showToast('管理员验证成功 ✓');
+      renderSubcategories(); // Refresh to show add/delete buttons
       // Execute pending action or default to upload
       if (pendingAdminAction) {
         const action = pendingAdminAction;
@@ -1327,11 +1436,66 @@
   });
 
   // ============================================================
+  //  ADD SUBCATEGORY MODAL
+  // ============================================================
+  const addSubcatModal = $('#addSubcatModal');
+  let addSubcatTargetCat = '';
+
+  function openAddSubcatModal(catKey) {
+    addSubcatTargetCat = catKey;
+    $('#addSubcatLabel').value = '';
+    const titleEl = addSubcatModal.querySelector('.modal-title');
+    if (titleEl) titleEl.textContent = `为「${getCategoryLabel(catKey)}」添加子分类`;
+    addSubcatModal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => $('#addSubcatLabel').focus(), 300);
+  }
+
+  function closeAddSubcatModal() {
+    addSubcatModal.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  $('#addSubcatClose').addEventListener('click', closeAddSubcatModal);
+  addSubcatModal.querySelector('.modal-backdrop').addEventListener('click', closeAddSubcatModal);
+
+  $('#addSubcatSubmit').addEventListener('click', () => {
+    const label = $('#addSubcatLabel').value.trim();
+    if (!label) {
+      showToast('请输入子分类名称');
+      return;
+    }
+    // Auto-generate a safe key from label
+    const key = 'custom_' + Date.now().toString(36);
+    const ok = addSubcategory(addSubcatTargetCat, key, label);
+    if (!ok) {
+      showToast('添加失败，子分类可能已存在');
+      return;
+    }
+    closeAddSubcatModal();
+    renderSubcategories();
+    // Refresh selects in open modals
+    if (uploadModal.classList.contains('open')) {
+      populateSubcategorySelect('uploadSubcategory', $('#uploadCategory').value);
+    }
+    if (editModal.classList.contains('open')) {
+      populateSubcategorySelect('editSubcategory', $('#editCategory').value);
+    }
+    showToast(`已添加子分类「${label}」✓`);
+  });
+
+  // Enter key submits
+  $('#addSubcatLabel').addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('#addSubcatSubmit').click();
+  });
+
+  // ============================================================
   //  ESCAPE KEY
   // ============================================================
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if (adminModal.classList.contains('open')) closeAdminModal();
+      if (addSubcatModal.classList.contains('open')) closeAddSubcatModal();
+      else if (adminModal.classList.contains('open')) closeAdminModal();
       else if (editModal.classList.contains('open')) closeEditModal();
       else if (uploadModal.classList.contains('open')) closeUploadModal();
     }
