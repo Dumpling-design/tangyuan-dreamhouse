@@ -127,7 +127,63 @@
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
     catch { return []; }
   }
-  function saveWorks(w) { localStorage.setItem(STORAGE_KEY, JSON.stringify(w)); }
+  function saveWorks(w) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(w));
+      return true;
+    } catch (e) {
+      console.error('localStorage save failed:', e);
+      showToast('存储空间不足，请删除一些旧作品后重试');
+      return false;
+    }
+  }
+
+  // Estimate localStorage usage (in bytes)
+  function getStorageUsage() {
+    let total = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      total += key.length + (localStorage.getItem(key) || '').length;
+    }
+    return total * 2; // UTF-16 = 2 bytes per char
+  }
+
+  // Compress image using canvas — returns a Promise<dataURL>
+  function compressImage(dataURL, maxWidth, maxHeight, quality) {
+    maxWidth = maxWidth || 1920;
+    maxHeight = maxHeight || 1920;
+    quality = quality || 0.8;
+
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+
+        // Scale down if exceeds max dimensions
+        if (w > maxWidth || h > maxHeight) {
+          const ratio = Math.min(maxWidth / w, maxHeight / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // Use JPEG for better compression (unless it's a PNG with transparency)
+        const outputType = dataURL.includes('data:image/png') ? 'image/png' : 'image/jpeg';
+        const compressed = canvas.toDataURL(outputType, quality);
+
+        // Only use compressed if it's actually smaller
+        resolve(compressed.length < dataURL.length ? compressed : dataURL);
+      };
+      img.onerror = () => resolve(dataURL); // Fallback to original
+      img.src = dataURL;
+    });
+  }
 
   // Migrate: clear old v3 data
   if (localStorage.getItem('alpha_portfolio_works_v3')) {
@@ -750,11 +806,27 @@
       const isVideo = file.type.startsWith('video/');
       if (!isImage && !isVideo) return;
 
+      // Check file size — warn if very large
+      if (file.size > 10 * 1024 * 1024) {
+        showToast(`文件 ${file.name} 过大（>${Math.round(file.size/1024/1024)}MB），可能导致存储失败`);
+      }
+
       const reader = new FileReader();
-      reader.onload = e => {
+      reader.onload = async e => {
+        let src = e.target.result;
+
+        // Compress images to save localStorage space
+        if (isImage) {
+          try {
+            src = await compressImage(src, 1920, 1920, 0.75);
+          } catch (err) {
+            console.warn('Image compression failed, using original:', err);
+          }
+        }
+
         pendingFiles.push({
           name: file.name,
-          src: e.target.result,
+          src: src,
           type: isVideo ? 'video' : 'image'
         });
         // Auto-set media type
@@ -793,11 +865,27 @@
       showToast('请先选择文件');
       return;
     }
+
+    // Pre-check: estimate if the new data will fit in localStorage
+    const newDataSize = pendingFiles.reduce((sum, f) => sum + f.src.length, 0) * 2; // UTF-16
+    const currentUsage = getStorageUsage();
+    const STORAGE_LIMIT = 4.5 * 1024 * 1024; // ~4.5MB safe limit (most browsers allow 5-10MB)
+
+    if (currentUsage + newDataSize > STORAGE_LIMIT) {
+      const usedMB = (currentUsage / 1024 / 1024).toFixed(1);
+      const newMB = (newDataSize / 1024 / 1024).toFixed(1);
+      showToast(`存储空间不足（已用${usedMB}MB，新增${newMB}MB）。请删除一些旧作品后重试`);
+      return;
+    }
+
     const title = $('#uploadTitle').value.trim() || '未命名作品';
     const category = $('#uploadCategory').value;
     const subcategory = $('#uploadSubcategory').value;
     const mediaType = $('#uploadMediaType').value;
     const desc = $('#uploadDesc').value.trim();
+
+    // Keep a backup in case save fails
+    const backupWorks = [...works];
 
     pendingFiles.forEach((f, i) => {
       works.unshift({
@@ -811,7 +899,13 @@
       });
     });
 
-    saveWorks(works);
+    const saved = saveWorks(works);
+    if (!saved) {
+      // Rollback on failure
+      works = backupWorks;
+      return;
+    }
+
     renderSubcategories();
     renderGallery();
     buildHeroSlides();
