@@ -63,6 +63,9 @@
     sessionStorage.removeItem('tangyuan_admin_auth');
   }
 
+  // Pending action after admin auth — used for edit/delete flows
+  let pendingAdminAction = null;
+
   // Check session on load
   checkAdminSession();
 
@@ -311,59 +314,7 @@
 
   let works = []; // Will be populated after IndexedDB init
 
-  // Demo works
-  const DEMO_WORKS = [
-    {
-      id: 'd1', title: '城市黄昏', category: 'photography', subcategory: 'landscape',
-      desc: '日落时分的城市天际线', mediaType: 'image',
-      src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a080e"/><stop offset=".35" stop-color="#1a1018"/><stop offset=".5" stop-color="#c87040"/><stop offset=".65" stop-color="#e8a850"/><stop offset="1" stop-color="#0a0a0e"/></linearGradient></defs><rect fill="url(#g)" width="1600" height="900"/><rect fill="#0a0a0e" y="600" width="1600" height="300"/><rect fill="#12101a" x="200" y="360" width="80" height="240" rx="2"/><rect fill="#12101a" x="350" y="280" width="120" height="320" rx="2"/><rect fill="#12101a" x="550" y="200" width="160" height="400" rx="2"/><rect fill="#12101a" x="800" y="300" width="100" height="300" rx="2"/><rect fill="#12101a" x="1000" y="340" width="130" height="260" rx="2"/><rect fill="#12101a" x="1250" y="400" width="90" height="200" rx="2"/><circle cx="1200" cy="160" r="60" fill="#e8a850" opacity=".7"/><rect fill="#c8a45a" x="380" y="320" width="20" height="15" opacity=".3" rx="1"/><rect fill="#d47040" x="580" y="260" width="20" height="15" opacity=".25" rx="1"/><rect fill="#c8a45a" x="1030" y="380" width="20" height="15" opacity=".2" rx="1"/></svg>'),
-    },
-    {
-      id: 'd2', title: '静物光影', category: 'photography', subcategory: 'product',
-      desc: '自然光下的静物摄影练习', mediaType: 'image',
-      src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><defs><radialGradient id="g"><stop offset="0" stop-color="#2a2018"/><stop offset="1" stop-color="#0a080a"/></radialGradient></defs><rect fill="url(#g)" width="1600" height="900"/><ellipse cx="800" cy="760" rx="350" ry="60" fill="#1a1510"/><rect fill="#c0a060" x="700" y="350" width="200" height="410" rx="8"/><circle cx="800" cy="320" r="120" fill="#c8a45a" opacity=".4"/><circle cx="800" cy="320" r="80" fill="#e8c87a" opacity=".25"/></svg>'),
-    },
-    {
-      id: 'd3', title: '山间晨雾', category: 'photography', subcategory: 'nature',
-      desc: '清晨山间薄雾弥漫', mediaType: 'image',
-      src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a0e14"/><stop offset=".4" stop-color="#1a2028"/><stop offset="1" stop-color="#4a5860"/></linearGradient></defs><rect fill="url(#sky)" width="1600" height="900"/><path d="M0 480 Q400 280 800 400 Q1200 240 1600 360 L1600 900 L0 900Z" fill="#1a2818" opacity=".7"/><path d="M0 580 Q500 420 900 530 Q1300 380 1600 480 L1600 900 L0 900Z" fill="#0e1810" opacity=".85"/><rect fill="#4a5860" y="440" width="1600" height="60" opacity=".08"/><circle cx="300" cy="200" r="40" fill="#e8c87a" opacity=".15"/></svg>'),
-    },
-    {
-      id: 'd4', title: 'Art Deco 大厅', category: 'design', subcategory: 'interior',
-      desc: 'Art Deco 风格室内概念设计', mediaType: 'image',
-      src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect fill="#0a080e" width="1600" height="900"/><rect fill="#12101a" x="200" y="80" width="1200" height="740" rx="4"/><line x1="800" y1="80" x2="800" y2="820" stroke="#c8a45a" stroke-width="1" opacity=".12"/><line x1="200" y1="450" x2="1400" y2="450" stroke="#c8a45a" stroke-width="1" opacity=".12"/><path d="M800 120 L1050 350 L800 350Z" fill="#c8a45a" opacity=".04"/><path d="M800 120 L550 350 L800 350Z" fill="#d47040" opacity=".03"/><circle cx="800" cy="450" r="100" fill="none" stroke="#c8a45a" stroke-width="1" opacity=".12"/><circle cx="800" cy="450" r="160" fill="none" stroke="#e8c87a" stroke-width=".5" opacity=".08"/><circle cx="800" cy="450" r="220" fill="none" stroke="#c8a45a" stroke-width=".5" opacity=".05"/></svg>'),
-    },
-    {
-      id: 'd5', title: '街头霓虹', category: 'photography', subcategory: 'street',
-      desc: '雨夜街头的霓虹灯光', mediaType: 'image',
-      src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect fill="#08060e" width="1600" height="900"/><rect fill="#c8a45a" x="300" y="150" width="300" height="50" rx="2" opacity=".35"/><rect fill="#d47040" x="900" y="250" width="280" height="40" rx="2" opacity=".3"/><rect fill="#e8c87a" x="400" y="450" width="250" height="45" rx="2" opacity=".25"/><rect fill="#c8a45a" x="1050" y="500" width="200" height="35" rx="2" opacity=".2"/><rect fill="#0a0a10" x="0" y="660" width="1600" height="240"/><ellipse cx="600" cy="690" rx="200" ry="15" fill="#c8a45a" opacity=".06"/><ellipse cx="1000" cy="700" rx="160" ry="12" fill="#d47040" opacity=".05"/></svg>'),
-    },
-    {
-      id: 'd6', title: '仙侠意境', category: 'painting', subcategory: 'concept_art',
-      desc: '中国奇幻风格概念画', mediaType: 'image',
-      src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#08080e"/><stop offset=".4" stop-color="#0e1820"/><stop offset=".7" stop-color="#1a2830"/><stop offset="1" stop-color="#08080e"/></linearGradient></defs><rect fill="url(#g)" width="1600" height="900"/><circle cx="1200" cy="140" r="70" fill="#e8e0c8" opacity=".5"/><circle cx="1200" cy="140" r="90" fill="none" stroke="#c8a45a" stroke-width="1" opacity=".1"/><path d="M0 560 Q200 420 400 520 Q600 360 800 460 Q1000 320 1200 420 Q1400 320 1600 380 L1600 900 L0 900Z" fill="#0e2018" opacity=".6"/><path d="M0 700 Q300 600 600 680 Q900 550 1200 650 Q1400 580 1600 620 L1600 900 L0 900Z" fill="#081410" opacity=".7"/></svg>'),
-    },
-    {
-      id: 'd7', title: '角色立绘', category: 'painting', subcategory: 'character',
-      desc: '游戏角色概念设计', mediaType: 'image',
-      src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect fill="#0a080e" width="1600" height="900"/><circle cx="800" cy="280" r="80" fill="#1a1520"/><rect fill="#1a1520" x="720" y="360" width="160" height="200" rx="12"/><rect fill="#14101c" x="700" y="560" width="70" height="160" rx="6"/><rect fill="#14101c" x="830" y="560" width="70" height="160" rx="6"/><circle cx="775" cy="265" r="10" fill="#c8a45a" opacity=".5"/><circle cx="825" cy="265" r="10" fill="#c8a45a" opacity=".5"/><path d="M700 300 Q800 340 900 300" stroke="#e8c87a" stroke-width="2" fill="none" opacity=".15"/></svg>'),
-    },
-    {
-      id: 'd8', title: 'UI 概念稿', category: 'design', subcategory: 'ui_ux',
-      desc: '移动端应用界面设计', mediaType: 'image',
-      src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect fill="#0a080e" width="1600" height="900"/><rect fill="#12101a" x="560" y="60" width="480" height="780" rx="20"/><rect fill="#c8a45a" x="600" y="110" width="400" height="50" rx="4" opacity=".12"/><rect fill="#18162a" x="600" y="190" width="400" height="140" rx="6"/><rect fill="#18162a" x="600" y="360" width="190" height="120" rx="6"/><rect fill="#18162a" x="810" y="360" width="190" height="120" rx="6"/><rect fill="#c8a45a" x="600" y="700" width="400" height="56" rx="4" opacity=".3"/><circle cx="800" cy="810" r="18" fill="none" stroke="#3a3530" stroke-width="2"/></svg>'),
-    },
-    {
-      id: 'd9', title: '建筑夜景', category: 'photography', subcategory: 'architecture',
-      desc: '现代建筑的夜间灯光', mediaType: 'image',
-      src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect fill="#06060a" width="1600" height="900"/><rect fill="#0e0c14" x="300" y="100" width="280" height="600" rx="2"/><rect fill="#0e0c14" x="750" y="180" width="340" height="520" rx="2"/><rect fill="#0e0c14" x="1200" y="250" width="200" height="450" rx="2"/><rect fill="#c8a45a" x="340" y="150" width="40" height="28" rx="2" opacity=".25"/><rect fill="#d47040" x="420" y="250" width="40" height="28" rx="2" opacity=".18"/><rect fill="#c8a45a" x="340" y="350" width="40" height="28" rx="2" opacity=".2"/><rect fill="#e8c87a" x="800" y="250" width="40" height="28" rx="2" opacity=".22"/><rect fill="#c8a45a" x="900" y="380" width="40" height="28" rx="2" opacity=".15"/><rect fill="#d47040" x="800" y="500" width="40" height="28" rx="2" opacity=".18"/><rect fill="#0a0a10" y="700" width="1600" height="200"/></svg>'),
-    },
-    {
-      id: 'd10', title: '海报设计', category: 'design', subcategory: 'poster',
-      desc: '活动宣传海报', mediaType: 'image',
-      src: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><defs><linearGradient id="p" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c8a45a"/><stop offset="1" stop-color="#d47040"/></linearGradient></defs><rect fill="#08060c" width="1600" height="900"/><circle cx="800" cy="450" r="250" fill="none" stroke="url(#p)" stroke-width="1.5" opacity=".2"/><circle cx="800" cy="450" r="170" fill="none" stroke="url(#p)" stroke-width="1" opacity=".12"/><circle cx="800" cy="450" r="330" fill="none" stroke="url(#p)" stroke-width=".8" opacity=".08"/><circle cx="800" cy="450" r="90" fill="none" stroke="url(#p)" stroke-width=".5" opacity=".1"/><rect fill="#c8a45a" x="640" y="440" width="320" height="3" rx="1.5" opacity=".2"/><rect fill="#d47040" x="700" y="460" width="200" height="2" rx="1" opacity=".15"/></svg>'),
-    },
-  ];
+  // Demo works removed — start with empty gallery
 
   // Demo init is deferred to after IndexedDB opens — see initApp()
 
@@ -799,9 +750,16 @@
   const adminError     = $('#adminError');
   const adminRemember  = $('#adminRemember');
 
-  function openAdminModal() {
+  function openAdminModal(descText) {
     adminPassword.value = '';
     adminError.textContent = '';
+    // Update the description if provided
+    const descEl = adminModal.querySelector('.admin-modal-desc');
+    if (descEl && descText) {
+      descEl.textContent = descText;
+    } else if (descEl) {
+      descEl.textContent = '请输入管理员密码以继续操作';
+    }
     adminModal.classList.add('open');
     document.body.style.overflow = 'hidden';
     setTimeout(() => adminPassword.focus(), 300);
@@ -823,8 +781,14 @@
     if (authenticateAdmin(pw, adminRemember.checked)) {
       closeAdminModal();
       showToast('管理员验证成功 ✓');
-      // Now open upload modal
-      openUploadModal();
+      // Execute pending action or default to upload
+      if (pendingAdminAction) {
+        const action = pendingAdminAction;
+        pendingAdminAction = null;
+        action();
+      } else {
+        openUploadModal();
+      }
     } else {
       adminError.textContent = '密码错误，请重试';
       adminPassword.value = '';
@@ -863,7 +827,8 @@
     if (isAdminAuthenticated) {
       openUploadModal();
     } else {
-      openAdminModal();
+      pendingAdminAction = null; // null means default to upload
+      openAdminModal('请输入管理员密码以访问上传功能');
     }
   }
 
@@ -1111,28 +1076,40 @@
     if (e.key === 'ArrowRight') { lbIndex = (lbIndex + 1) % lbFiltered.length; showLightboxItem(); }
   });
 
-  // Delete from lightbox
+  // Delete from lightbox — requires admin
   $('#lbDelete').addEventListener('click', async () => {
-    if (!isAdminAuthenticated) return;
     const w = lbFiltered[lbIndex];
     if (!w) return;
-    if (!confirm(`确定要删除「${w.title}」吗？`)) return;
-    works = works.filter(x => x.id !== w.id);
+
+    if (!isAdminAuthenticated) {
+      // Require admin auth first
+      pendingAdminAction = () => performDelete(w.id, w.title);
+      closeLightbox();
+      openAdminModal('请输入管理员密码以删除作品');
+      return;
+    }
+
+    performDelete(w.id, w.title);
+  });
+
+  async function performDelete(workId, workTitle) {
+    if (!confirm(`确定要删除「${workTitle}」吗？`)) return;
+    works = works.filter(x => x.id !== workId);
     saveWorks(works);
-    await deleteMedia(w.id); // Remove media from IndexedDB
+    await deleteMedia(workId); // Remove media from IndexedDB
     closeLightbox();
     renderSubcategories();
     renderGallery();
     buildHeroSlides();
     startSlideshow();
     showToast('已删除');
-  });
+  }
 
   // ============================================================
-  //  WATERMARK DOWNLOAD — Adds handwritten "汤圆" watermark
+  //  WATERMARK DOWNLOAD — Adds "tangyuan-dreamhouse" watermark
+  //  at the bottom-right corner for non-admin downloads.
   //  Uses Canvas API to composite watermark onto image/video frame
-  //  Only non-admin downloads get watermarked
-  // ============================================================
+  //  ============================================================
 
   function addWatermarkAndDownload(sourceEl, filename, isVideo) {
     const canvas = document.createElement('canvas');
@@ -1156,43 +1133,31 @@
 
     // Determine if admin — if admin, skip watermark
     if (!isAdminAuthenticated) {
-      // Calculate watermark size based on image dimensions
       const minDim = Math.min(sourceWidth, sourceHeight);
-      const fontSize = Math.max(24, Math.round(minDim * 0.06));
+      const fontSize = Math.max(16, Math.round(minDim * 0.028));
+      const padding = Math.round(fontSize * 0.8);
 
-      // Draw multiple watermarks across the image in a diagonal pattern
       ctx.save();
-      ctx.font = `${fontSize}px "Liu Jian Mao Cao", "Noto Serif SC", cursive`;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
 
-      // Rotate for diagonal watermark pattern
-      const spacing = fontSize * 5;
-      const diagonal = Math.sqrt(sourceWidth * sourceWidth + sourceHeight * sourceHeight);
-      const cols = Math.ceil(diagonal / spacing) + 2;
-      const rows = Math.ceil(diagonal / spacing) + 2;
-
-      ctx.translate(sourceWidth / 2, sourceHeight / 2);
-      ctx.rotate(-Math.PI / 6); // 30 degree tilt
-
-      for (let r = -rows; r <= rows; r++) {
-        for (let c = -cols; c <= cols; c++) {
-          const x = c * spacing;
-          const y = r * spacing;
-          ctx.fillText('汤圆', x, y);
-        }
-      }
-      ctx.restore();
-
-      // Also draw a larger corner watermark
-      ctx.save();
-      const cornerFontSize = Math.max(36, Math.round(minDim * 0.08));
-      ctx.font = `${cornerFontSize}px "Liu Jian Mao Cao", "Noto Serif SC", cursive`;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+      // Draw "tangyuan-dreamhouse" at bottom-right
+      ctx.font = `500 ${fontSize}px "Inter", "Space Grotesk", sans-serif`;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'bottom';
-      ctx.fillText('汤圆', sourceWidth - cornerFontSize * 0.5, sourceHeight - cornerFontSize * 0.4);
+
+      const text = 'tangyuan-dreamhouse';
+      const x = sourceWidth - padding;
+      const y = sourceHeight - padding;
+
+      // Subtle shadow for readability on any background
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+      ctx.shadowBlur = fontSize * 0.3;
+      ctx.shadowOffsetX = 1;
+      ctx.shadowOffsetY = 1;
+
+      // Semi-transparent white text
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.fillText(text, x, y);
+
       ctx.restore();
     }
 
@@ -1282,9 +1247,21 @@
   let editingId = null;
 
   $('#lbEdit').addEventListener('click', () => {
-    if (!isAdminAuthenticated) return;
     const w = lbFiltered[lbIndex];
     if (!w) return;
+
+    if (!isAdminAuthenticated) {
+      // Require admin auth first
+      pendingAdminAction = () => openEditForWork(w);
+      closeLightbox();
+      openAdminModal('请输入管理员密码以编辑作品');
+      return;
+    }
+
+    openEditForWork(w);
+  });
+
+  function openEditForWork(w) {
     editingId = w.id;
     $('#editTitle').value = w.title;
     $('#editCategory').value = w.category;
@@ -1294,7 +1271,7 @@
     closeLightbox();
     editModal.classList.add('open');
     document.body.style.overflow = 'hidden';
-  });
+  }
 
   function closeEditModal() {
     editModal.classList.remove('open');
@@ -1426,13 +1403,9 @@
       });
     }
 
-    // Demo works — initialize if empty
+    // If no works, gallery will show empty state
     if (works.length === 0) {
-      works = [...DEMO_WORKS];
-      // Save demo media to IndexedDB
-      const demoMedia = works.map(w => ({ id: w.id, src: w.src }));
-      try { await saveMediaBatch(demoMedia); } catch(e) { /* SVGs are small, fine */ }
-      saveWorksMeta(works);
+      // Clean start — no demo works
     }
 
     renderSubcategories();

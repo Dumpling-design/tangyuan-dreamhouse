@@ -1493,14 +1493,12 @@ img { display: block; max-width: 100%; }
   cursor: pointer;
 }
 
-/* Hide admin-only buttons when not authenticated */
-.admin-only-btn { display: none !important; }
-body.admin-authenticated .admin-only-btn { display: flex !important; }
+/* Admin-only buttons are always visible — clicking triggers password check */
+/* No display:none needed — authentication handled in JS */
 
 /* Hide upload buttons for non-admin */
 /* Upload button stays visible — clicking it triggers password check */
-/* Mobile upload link hidden for non-admin to keep mobile clean */
-body:not(.admin-authenticated) .mobile-link.accent { display: none; }
+/* Mobile upload link always visible — clicking triggers password check */
 
 /* Shake animation for wrong password */
 @keyframes shake {
