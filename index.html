@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover" />
+  <title>汤圆畅想屋</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500;1,600;1,700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Noto+Serif+SC:wght@400;500;600;700;900&family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Liu+Jian+Mao+Cao&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ========== GLOBAL TEXTURE OVERLAY — Rich retro film feel ========== -->
+  <div class="bg-texture" aria-hidden="true"></div>
+  <div class="bg-grain" aria-hidden="true"></div>
+  <div class="bg-grain-fine" aria-hidden="true"></div>
+  <div class="bg-scratches" aria-hidden="true"></div>
+  <div class="bg-vignette" aria-hidden="true"></div>
+
+  <!-- ========== RIGHT-SIDE ACTIVE SECTION LIGHT ========== -->
+  <div class="section-active-light" id="sectionActiveLight" aria-hidden="true">
+    <div class="section-active-light-inner"></div>
+    <div class="section-active-light-flicker"></div>
+    <div class="section-active-light-edge"></div>
+  </div>
+
+  <!-- ========== RANDOM CROSSING ARCS ========== -->
+  <div class="crossing-arcs" aria-hidden="true">
+    <svg class="arc-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="arcGrad1" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#c8a45a" stop-opacity="0"/>
+          <stop offset="0.5" stop-color="#c8a45a" stop-opacity="0.07"/>
+          <stop offset="1" stop-color="#c8a45a" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="arcGrad2" x1="1" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#d47040" stop-opacity="0"/>
+          <stop offset="0.4" stop-color="#d47040" stop-opacity="0.05"/>
+          <stop offset="1" stop-color="#d47040" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="arcGrad3" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0" stop-color="#e8c87a" stop-opacity="0"/>
+          <stop offset="0.5" stop-color="#e8c87a" stop-opacity="0.04"/>
+          <stop offset="1" stop-color="#e8c87a" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <!-- Arc group 1 — large crossing arcs -->
+      <circle cx="320" cy="-120" r="680" fill="none" stroke="url(#arcGrad1)" stroke-width="0.8"/>
+      <circle cx="1600" cy="300" r="900" fill="none" stroke="url(#arcGrad2)" stroke-width="0.6"/>
+      <circle cx="960" cy="1200" r="750" fill="none" stroke="url(#arcGrad1)" stroke-width="0.5"/>
+      <!-- Arc group 2 — medium crossing arcs -->
+      <circle cx="-200" cy="600" r="520" fill="none" stroke="url(#arcGrad3)" stroke-width="0.7"/>
+      <circle cx="1400" cy="-300" r="620" fill="none" stroke="url(#arcGrad1)" stroke-width="0.5"/>
+      <circle cx="700" cy="900" r="480" fill="none" stroke="url(#arcGrad2)" stroke-width="0.6"/>
+      <!-- Arc group 3 — small accent arcs -->
+      <circle cx="1100" cy="500" r="300" fill="none" stroke="url(#arcGrad3)" stroke-width="0.4"/>
+    </svg>
+  </div>
+
+  <!-- ========== LOADING SCREEN ========== -->
+  <div id="loader">
+    <div class="loader-inner">
+      <div class="loader-ring">
+        <svg width="64" height="64" viewBox="0 0 64 64">
+          <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+          <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1" stroke-dasharray="40 136" stroke-linecap="round" class="loader-ring-spin"/>
+        </svg>
+      </div>
+      <span class="loader-text">汤圆畅想屋</span>
+      <span class="loader-sub">LOADING</span>
+    </div>
+  </div>
+
+  <!-- ========== NAVIGATION ========== -->
+  <nav id="navbar">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <span class="logo-icon">◈</span>
+        <span class="logo-text">汤圆畅想屋</span>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="#hero" class="nav-link active" data-section="hero">首页</a></li>
+        <li class="nav-dropdown">
+          <a href="#works" class="nav-link" data-section="works">作品</a>
+          <div class="nav-dropdown-menu">
+            <a href="#" data-category="photography">📷 摄影</a>
+            <a href="#" data-category="painting">🎨 绘画</a>
+            <a href="#" data-category="design">🎯 设计</a>
+            <a href="#" data-category="video">🎬 视频</a>
+          </div>
+        </li>
+        <li><a href="#about" class="nav-link" data-section="about">关于</a></li>
+        <li><a href="#contact" class="nav-link" data-section="contact">联系</a></li>
+      </ul>
+
+      <div class="nav-right">
+        <button class="nav-upload-btn" id="navUploadBtn">
+          <span class="btn-glow"></span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span>上传</span>
+        </button>
+      </div>
+
+      <button class="nav-hamburger" id="hamburger">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ========== MOBILE MENU ========== -->
+  <div id="mobileMenu" class="mobile-menu">
+    <ul class="mobile-nav-links">
+      <li><a href="#hero" class="mobile-link">首页</a></li>
+      <li><a href="#works" class="mobile-link">作品</a></li>
+      <li><a href="#about" class="mobile-link">关于</a></li>
+      <li><a href="#contact" class="mobile-link">联系</a></li>
+      <li><a href="#" class="mobile-link accent" id="mobileUploadBtn">上传作品</a></li>
+    </ul>
+  </div>
+
+  <!-- ========== HERO SECTION ========== -->
+  <section id="hero" class="hero-section">
+    <!-- Warm light glow -->
+    <div class="section-warm-glow section-warm-glow--hero" aria-hidden="true"></div>
+
+    <!-- Background Slideshow Layer -->
+    <div class="hero-slideshow" id="heroSlideshow"></div>
+
+    <!-- Cinematic Overlays -->
+    <div class="hero-vignette"></div>
+    <div class="hero-gradient-overlay"></div>
+    <div class="hero-noise"></div>
+    <div class="hero-film-grain"></div>
+
+    <!-- Art Deco Corner Decorations -->
+    <div class="hero-corner hero-corner-tl"></div>
+    <div class="hero-corner hero-corner-tr"></div>
+    <div class="hero-corner hero-corner-bl"></div>
+    <div class="hero-corner hero-corner-br"></div>
+
+    <!-- Main Content -->
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="hero-badge-dot"></span>
+        CONCEPT ARTIST &bull; PHOTOGRAPHER &bull; DESIGNER
+      </div>
+
+      <h1 class="hero-title">
+        <span class="hero-title-ornament">✦</span>
+        <span class="hero-title-en">Tangyuan's Reverie</span>
+        <span class="hero-title-line"></span>
+        <span class="hero-title-main">汤圆畅想屋</span>
+        <span class="hero-title-line hero-title-line-bottom"></span>
+      </h1>
+
+      <p class="hero-subtitle">
+        <span class="hero-subtitle-deco">—</span>
+        在光影与像素之间，定义视觉叙事的无限可能
+        <span class="hero-subtitle-deco">—</span>
+      </p>
+
+      <div class="hero-stats">
+        <div class="stat-item">
+          <span class="stat-num" id="statPhotos">0</span>
+          <span class="stat-label">摄影</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-num" id="statPaintings">0</span>
+          <span class="stat-label">绘画</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-num" id="statDesigns">0</span>
+          <span class="stat-label">设计</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-num" id="statVideos">0</span>
+          <span class="stat-label">视频</span>
+        </div>
+      </div>
+
+      <a href="#works" class="hero-cta">
+        <span>探索作品</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+    </div>
+
+    <!-- Slide Indicator -->
+    <div class="hero-slide-indicators" id="heroIndicators"></div>
+
+    <!-- Scroll Hint -->
+    <div class="hero-scroll-hint">
+      <div class="scroll-line"></div>
+      <span>SCROLL</span>
+    </div>
+
+    <!-- Current Slide Info -->
+    <div class="hero-slide-info" id="heroSlideInfo">
+      <span class="slide-counter" id="slideCounter">01 / 01</span>
+      <span class="slide-title" id="slideTitle"></span>
+    </div>
+  </section>
+
+  <!-- ========== WORKS SECTION ========== -->
+  <section id="works" class="works-section">
+    <div class="section-warm-glow section-warm-glow--works" aria-hidden="true"></div>
+    <div class="category-nav" id="categoryNav">
+      <div class="category-nav-inner">
+        <button class="cat-tab active" data-category="all">
+          <span class="cat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          </span>
+          <span>全部作品</span>
+        </button>
+        <button class="cat-tab" data-category="photography">
+          <span class="cat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </span>
+          <span>摄影</span>
+        </button>
+        <button class="cat-tab" data-category="painting">
+          <span class="cat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+          </span>
+          <span>绘画</span>
+        </button>
+        <button class="cat-tab" data-category="design">
+          <span class="cat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          </span>
+          <span>设计</span>
+        </button>
+        <button class="cat-tab" data-category="video">
+          <span class="cat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          </span>
+          <span>视频</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="subcategory-bar" id="subcategoryBar"></div>
+
+    <div class="gallery-container" id="galleryContainer"></div>
+
+    <div class="gallery-empty" id="galleryEmpty" style="display:none;">
+      <div class="empty-icon">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      </div>
+      <p class="empty-title">还没有作品</p>
+      <p class="empty-desc">点击右上角「上传」按钮开始添加你的创作</p>
+    </div>
+  </section>
+
+  <!-- ========== ABOUT SECTION ========== -->
+  <div class="section-divider"></div>
+  <section id="about" class="about-section">
+    <div class="section-warm-glow section-warm-glow--about" aria-hidden="true"></div>
+    <div class="about-inner">
+      <div class="about-left">
+        <div class="about-image">
+          <div class="about-image-placeholder">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+        </div>
+        <div class="about-glow"></div>
+      </div>
+      <div class="about-text">
+        <div class="section-label">ABOUT ME</div>
+        <p class="about-name" contenteditable="true">汤圆</p>
+        <p class="about-bio" contenteditable="true">概念艺术家 / 摄影师 / 设计师。热爱在光影之间捕捉瞬间的美，擅长 Art Deco 与新古典主义风格的创作。用镜头和画笔记录真实与想象的交汇。</p>
+        <div class="about-tags">
+          <span class="tag">摄影</span>
+          <span class="tag">概念艺术</span>
+          <span class="tag">Art Deco</span>
+          <span class="tag">室内设计</span>
+          <span class="tag">中国奇幻</span>
+          <span class="tag">视觉设计</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CONTACT SECTION ========== -->
+  <div class="section-divider"></div>
+  <section id="contact" class="contact-section">
+    <div class="section-warm-glow section-warm-glow--contact" aria-hidden="true"></div>
+    <div class="contact-inner">
+      <div class="section-label">GET IN TOUCH</div>
+      <h2 class="contact-title" contenteditable="true">合作洽谈</h2>
+      <p class="contact-desc" contenteditable="true">如有合作意向，欢迎通过以下方式联系</p>
+      <div class="contact-grid">
+        <a href="#" class="contact-card" contenteditable="true">
+          <div class="contact-card-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <span class="contact-card-label">邮箱</span>
+          <span class="contact-card-value">alpha@example.com</span>
+        </a>
+        <a href="#" class="contact-card" contenteditable="true">
+          <div class="contact-card-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          </div>
+          <span class="contact-card-label">微信</span>
+          <span class="contact-card-value">AlphaArt</span>
+        </a>
+        <a href="#" class="contact-card" contenteditable="true">
+          <div class="contact-card-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+          </div>
+          <span class="contact-card-label">ArtStation</span>
+          <span class="contact-card-value">artstation.com/alpha</span>
+        </a>
+      </div>
+    </div>
+    <footer class="footer">
+      <div class="footer-inner">
+        <p>&copy; 2026 汤圆畅想屋. All rights reserved.</p>
+        <p class="footer-tech">Powered by Creativity & Code</p>
+      </div>
+    </footer>
+  </section>
+
+  <!-- ========== UPLOAD MODAL ========== -->
+  <div id="uploadModal" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <button class="modal-close" id="modalClose">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <h3 class="modal-title">上传作品</h3>
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-zone-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <p class="drop-zone-main">拖拽文件到此处</p>
+        <p class="drop-zone-or">或</p>
+        <button class="drop-zone-browse">选择文件</button>
+        <p class="drop-zone-hint">支持 JPG / PNG / GIF / WebP / MP4 / WebM，可多选</p>
+        <input type="file" id="fileInput" accept="image/*,video/*" multiple hidden />
+      </div>
+      <div class="upload-previews" id="uploadPreviews"></div>
+      <div class="upload-form">
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>作品标题</label>
+            <input type="text" id="uploadTitle" placeholder="给作品起个名字" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>大类</label>
+            <select id="uploadCategory">
+              <option value="photography">摄影</option>
+              <option value="painting">绘画</option>
+              <option value="design">设计</option>
+              <option value="video">视频</option>
+            </select>
+          </div>
+          <div class="form-group flex-1">
+            <label>子分类</label>
+            <select id="uploadSubcategory"></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>媒体类型</label>
+            <select id="uploadMediaType">
+              <option value="image">静态图片</option>
+              <option value="video">动态影像</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>描述（可选）</label>
+          <textarea id="uploadDesc" placeholder="简单描述一下作品…" rows="3"></textarea>
+        </div>
+        <button class="upload-submit" id="uploadSubmit">
+          <span class="btn-glow"></span>
+          确认上传
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== LIGHTBOX ========== -->
+  <div id="lightbox" class="lightbox">
+    <button class="lb-close" id="lbClose">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <button class="lb-nav lb-prev" id="lbPrev">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <button class="lb-nav lb-next" id="lbNext">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+    <div class="lb-content">
+      <img id="lbImage" src="" alt="" />
+      <video id="lbVideo" src="" muted loop playsinline style="display:none;"></video>
+      <div class="lb-info">
+        <div class="lb-meta">
+          <span class="lb-category" id="lbCategory"></span>
+          <span class="lb-subcategory" id="lbSubcategory"></span>
+        </div>
+        <h3 id="lbTitle"></h3>
+        <p id="lbDesc"></p>
+        <div class="lb-actions">
+          <button class="lb-action-btn" id="lbDownload" title="下载">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            下载
+          </button>
+          <button class="lb-action-btn admin-only-btn" id="lbEdit" title="编辑">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            编辑
+          </button>
+          <button class="lb-action-btn danger admin-only-btn" id="lbDelete" title="删除">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            删除
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== EDIT MODAL ========== -->
+  <div id="editModal" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm">
+      <button class="modal-close" id="editModalClose">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <h3 class="modal-title">编辑作品</h3>
+      <div class="upload-form">
+        <div class="form-group">
+          <label>作品标题</label>
+          <input type="text" id="editTitle" />
+        </div>
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label>大类</label>
+            <select id="editCategory">
+              <option value="photography">摄影</option>
+              <option value="painting">绘画</option>
+              <option value="design">设计</option>
+              <option value="video">视频</option>
+            </select>
+          </div>
+          <div class="form-group flex-1">
+            <label>子分类</label>
+            <select id="editSubcategory"></select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>描述</label>
+          <textarea id="editDesc" rows="3"></textarea>
+        </div>
+        <button class="upload-submit" id="editSubmit">
+          <span class="btn-glow"></span>
+          保存修改
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== ADMIN PASSWORD MODAL ========== -->
+  <div id="adminModal" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm admin-password-modal">
+      <button class="modal-close" id="adminModalClose">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div class="admin-modal-header">
+        <div class="admin-modal-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <h3 class="modal-title">管理员验证</h3>
+        <p class="admin-modal-desc">请输入管理员密码以访问上传功能</p>
+      </div>
+      <div class="upload-form">
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="adminPassword" placeholder="请输入密码…" autocomplete="off" />
+          <p class="admin-error" id="adminError"></p>
+        </div>
+        <div class="admin-remember">
+          <label class="admin-checkbox-label">
+            <input type="checkbox" id="adminRemember" />
+            <span>本次会话记住我</span>
+          </label>
+        </div>
+        <button class="upload-submit" id="adminSubmit">
+          <span class="btn-glow"></span>
+          验证并继续
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== TOAST ========== -->
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
