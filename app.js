@@ -1,39 +1,35 @@
 /* ============================================================
-   汤圆畅想屋 — v4 Application Logic
-   Design: Retro Art Deco + Vinyl Record Aesthetics
-   Features: Immersive fullscreen slideshow (images + video),
-   Auto-play on idle, hierarchical categories, Netflix-style rows,
-   Upload, Gallery, Lightbox, Edit, Delete, Filter,
-   LocalStorage persistence, Drag & Drop
+   汤圆畅想屋 — v5 Application Logic
+   Cloud-first architecture: Supabase DB + Storage
+   All devices share the same gallery data.
    ============================================================ */
 
 ;(function () {
   'use strict';
 
   // ============================================================
+  //  SUPABASE CLIENT
+  // ============================================================
+  const SUPABASE_URL = 'https://ijigiydtqtdchhokflqz.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqaWdpeWR0cXRkY2hob2tmbHF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNDYwNTMsImV4cCI6MjA5MTgyMjA1M30.RyAhBcJl42ad3oOlU_mAtah_Dre5hSppL6KSwPM2WIk';
+
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ============================================================
   //  ADMIN AUTHENTICATION SYSTEM
-  //  Upload is restricted to admin only. Password is hashed with
-  //  SHA-256 and compared client-side. Session can be remembered
-  //  via sessionStorage.
-  //  Default password: tangyuan2026
-  //  ============================================================
-  const ADMIN_HASH = 'a1b2c3d4e5'; // placeholder — we use simple hash below
+  // ============================================================
   let isAdminAuthenticated = false;
 
-  // Simple string hash for password verification (not cryptographically strong,
-  // but sufficient for a client-side portfolio guard)
   function simpleHash(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
+      hash = hash & hash;
     }
     return hash.toString(36);
   }
 
-  // The admin password — change this to whatever you want
-  // Default: "tangyuan2026"
   const ADMIN_PASSWORD_HASH = simpleHash('tangyuan2026');
 
   function checkAdminSession() {
@@ -63,18 +59,12 @@
     sessionStorage.removeItem('tangyuan_admin_auth');
   }
 
-  // Pending action after admin auth — used for edit/delete flows
   let pendingAdminAction = null;
-
-  // Check session on load
   checkAdminSession();
 
   // ============================================================
-  //  CATEGORY SYSTEM — dynamic subcategories (persisted)
+  //  CATEGORY SYSTEM — dynamic subcategories (cloud-persisted)
   // ============================================================
-  const CUSTOM_SUBS_KEY = 'tangyuan_custom_subcategories';
-
-  // Default subcategories — used as base, user additions are layered on top
   const DEFAULT_SUBCATEGORIES = {
     photography: {
       landscape: '风光', portrait: '人像', street: '街拍',
@@ -111,206 +101,245 @@
     video:       { label: '视频', icon: 'video', subcategories: {} },
   };
 
-  // Load custom subcategories from localStorage and merge with defaults
-  function loadCustomSubcategories() {
-    let custom = {};
-    try { custom = JSON.parse(localStorage.getItem(CUSTOM_SUBS_KEY)) || {}; } catch { custom = {}; }
-    // custom format: { photography: { added: {key:label,...}, removed: [key,...] }, ... }
+  // Load custom subcategories from Supabase DB
+  async function loadCustomSubcategories() {
+    // Start with defaults
     for (const catKey of Object.keys(CATEGORIES)) {
-      const base = { ...DEFAULT_SUBCATEGORIES[catKey] };
-      const patch = custom[catKey] || {};
-      // Remove user-deleted keys
-      if (Array.isArray(patch.removed)) {
-        patch.removed.forEach(k => delete base[k]);
-      }
-      // Add user-added keys
-      if (patch.added && typeof patch.added === 'object') {
-        Object.assign(base, patch.added);
-      }
-      CATEGORIES[catKey].subcategories = base;
+      CATEGORIES[catKey].subcategories = { ...DEFAULT_SUBCATEGORIES[catKey] };
     }
-  }
 
-  function saveCustomSubcategories() {
-    // Compute diff against defaults
-    const custom = {};
-    for (const catKey of Object.keys(CATEGORIES)) {
-      const defaults = DEFAULT_SUBCATEGORIES[catKey];
-      const current = CATEGORIES[catKey].subcategories;
-      const added = {};
-      const removed = [];
-      // Find additions (keys in current but not in defaults, or label changed)
-      for (const [k, v] of Object.entries(current)) {
-        if (!(k in defaults)) {
-          added[k] = v;
-        }
-      }
-      // Find removals (keys in defaults but not in current)
-      for (const k of Object.keys(defaults)) {
-        if (!(k in current)) {
-          removed.push(k);
-        }
-      }
-      if (Object.keys(added).length > 0 || removed.length > 0) {
-        custom[catKey] = {};
-        if (Object.keys(added).length > 0) custom[catKey].added = added;
-        if (removed.length > 0) custom[catKey].removed = removed;
-      }
-    }
     try {
-      localStorage.setItem(CUSTOM_SUBS_KEY, JSON.stringify(custom));
+      const { data, error } = await supabase
+        .from('custom_subcategories')
+        .select('*');
+
+      if (error) {
+        console.warn('Failed to load custom subcategories:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        for (const row of data) {
+          if (!CATEGORIES[row.category]) continue;
+          if (row.action === 'removed') {
+            delete CATEGORIES[row.category].subcategories[row.sub_key];
+          } else if (row.action === 'added') {
+            CATEGORIES[row.category].subcategories[row.sub_key] = row.sub_label;
+          }
+        }
+      }
     } catch (e) {
-      console.error('Failed to save custom subcategories:', e);
+      console.warn('Error loading subcategories:', e);
     }
   }
 
-  // Add a subcategory to a category
-  function addSubcategory(catKey, subKey, subLabel) {
+  async function addSubcategory(catKey, subKey, subLabel) {
     if (!CATEGORIES[catKey]) return false;
-    if (CATEGORIES[catKey].subcategories[subKey]) return false; // already exists
+    if (CATEGORIES[catKey].subcategories[subKey]) return false;
     CATEGORIES[catKey].subcategories[subKey] = subLabel;
-    saveCustomSubcategories();
+
+    try {
+      await supabase
+        .from('custom_subcategories')
+        .upsert({ category: catKey, sub_key: subKey, sub_label: subLabel, action: 'added' },
+                 { onConflict: 'category,sub_key,action' });
+    } catch (e) {
+      console.error('Failed to save subcategory:', e);
+    }
     return true;
   }
 
-  // Remove a subcategory from a category
-  function removeSubcategory(catKey, subKey) {
+  async function removeSubcategory(catKey, subKey) {
     if (!CATEGORIES[catKey]) return false;
     if (!(subKey in CATEGORIES[catKey].subcategories)) return false;
+
+    const isDefault = subKey in DEFAULT_SUBCATEGORIES[catKey];
     delete CATEGORIES[catKey].subcategories[subKey];
-    saveCustomSubcategories();
+
+    try {
+      if (isDefault) {
+        // Mark default subcategory as removed
+        await supabase
+          .from('custom_subcategories')
+          .upsert({ category: catKey, sub_key: subKey, sub_label: '', action: 'removed' },
+                   { onConflict: 'category,sub_key,action' });
+      } else {
+        // Delete the custom addition
+        await supabase
+          .from('custom_subcategories')
+          .delete()
+          .eq('category', catKey)
+          .eq('sub_key', subKey)
+          .eq('action', 'added');
+      }
+    } catch (e) {
+      console.error('Failed to remove subcategory:', e);
+    }
     return true;
   }
-
-  // Initialize on load
-  loadCustomSubcategories();
 
   function getCategoryLabel(cat) { return CATEGORIES[cat]?.label || cat; }
   function getSubcategoryLabel(cat, sub) { return CATEGORIES[cat]?.subcategories?.[sub] || sub || ''; }
   function getSubcategories(cat) { return CATEGORIES[cat]?.subcategories || {}; }
 
   // ============================================================
-  //  DATA STORE — IndexedDB for media, localStorage for metadata
-  //  IndexedDB provides 50MB-hundreds of MB of storage,
-  //  solving the localStorage 5MB limit that blocked uploads.
+  //  SUPABASE CLOUD DATA LAYER
+  //  - Works metadata in `works` table
+  //  - Media files in `artworks` storage bucket
+  //  - Public URLs for images (no auth needed to view)
   // ============================================================
-  const STORAGE_KEY = 'alpha_portfolio_works_v4';
-  const DB_NAME = 'tangyuan_portfolio';
-  const DB_VERSION = 1;
-  const MEDIA_STORE = 'media';
 
-  let db = null; // IndexedDB instance
-
-  // Open / create IndexedDB
-  function openDB() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-      request.onupgradeneeded = (e) => {
-        const database = e.target.result;
-        if (!database.objectStoreNames.contains(MEDIA_STORE)) {
-          database.createObjectStore(MEDIA_STORE, { keyPath: 'id' });
-        }
-      };
-      request.onsuccess = (e) => {
-        db = e.target.result;
-        resolve(db);
-      };
-      request.onerror = (e) => {
-        console.error('IndexedDB open failed:', e);
-        reject(e);
-      };
-    });
-  }
-
-  // Save a single media blob to IndexedDB
-  function saveMedia(id, src) {
-    return new Promise((resolve, reject) => {
-      if (!db) { resolve(); return; }
-      const tx = db.transaction(MEDIA_STORE, 'readwrite');
-      const store = tx.objectStore(MEDIA_STORE);
-      store.put({ id, src });
-      tx.oncomplete = () => resolve();
-      tx.onerror = (e) => { console.error('saveMedia error:', e); reject(e); };
-    });
-  }
-
-  // Load a single media blob from IndexedDB
-  function loadMedia(id) {
-    return new Promise((resolve, reject) => {
-      if (!db) { resolve(null); return; }
-      const tx = db.transaction(MEDIA_STORE, 'readonly');
-      const store = tx.objectStore(MEDIA_STORE);
-      const req = store.get(id);
-      req.onsuccess = () => resolve(req.result ? req.result.src : null);
-      req.onerror = (e) => { console.error('loadMedia error:', e); resolve(null); };
-    });
-  }
-
-  // Load all media from IndexedDB into a map { id: src }
-  function loadAllMedia() {
-    return new Promise((resolve, reject) => {
-      if (!db) { resolve({}); return; }
-      const tx = db.transaction(MEDIA_STORE, 'readonly');
-      const store = tx.objectStore(MEDIA_STORE);
-      const req = store.getAll();
-      req.onsuccess = () => {
-        const map = {};
-        (req.result || []).forEach(item => { map[item.id] = item.src; });
-        resolve(map);
-      };
-      req.onerror = (e) => { console.error('loadAllMedia error:', e); resolve({}); };
-    });
-  }
-
-  // Delete media from IndexedDB
-  function deleteMedia(id) {
-    return new Promise((resolve) => {
-      if (!db) { resolve(); return; }
-      const tx = db.transaction(MEDIA_STORE, 'readwrite');
-      const store = tx.objectStore(MEDIA_STORE);
-      store.delete(id);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    });
-  }
-
-  // Save multiple media items in one transaction
-  function saveMediaBatch(items) {
-    return new Promise((resolve, reject) => {
-      if (!db || items.length === 0) { resolve(); return; }
-      const tx = db.transaction(MEDIA_STORE, 'readwrite');
-      const store = tx.objectStore(MEDIA_STORE);
-      items.forEach(({ id, src }) => store.put({ id, src }));
-      tx.oncomplete = () => resolve();
-      tx.onerror = (e) => { console.error('saveMediaBatch error:', e); reject(e); };
-    });
-  }
-
-  // ---- Metadata in localStorage (small JSON, no media) ----
-  function loadWorksMeta() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
-    catch { return []; }
-  }
-  function saveWorksMeta(w) {
+  // Load all works from Supabase DB
+  async function loadWorksFromCloud() {
     try {
-      // Strip src from metadata — media lives in IndexedDB
-      const meta = w.map(({ src, ...rest }) => rest);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(meta));
-      return true;
+      const { data, error } = await supabase
+        .from('works')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Failed to load works:', error);
+        return [];
+      }
+
+      // Map DB rows to app format, generate public URLs for media
+      return (data || []).map(row => ({
+        id: row.id,
+        title: row.title,
+        category: row.category,
+        subcategory: row.subcategory || '',
+        mediaType: row.media_type || 'image',
+        desc: row.description || '',
+        storagePath: row.storage_path || '',
+        src: row.storage_path
+          ? `${SUPABASE_URL}/storage/v1/object/public/artworks/${row.storage_path}`
+          : '',
+        createdAt: row.created_at,
+      }));
     } catch (e) {
-      console.error('localStorage save failed:', e);
-      showToast('元数据保存失败');
-      return false;
+      console.error('Error loading works:', e);
+      return [];
     }
   }
 
-  // Legacy compat wrapper — used by existing code
-  function saveWorks(w) {
-    return saveWorksMeta(w);
+  // Upload media file to Supabase Storage, return storage path
+  async function uploadMediaToCloud(file, workId) {
+    const ext = file.name.split('.').pop().toLowerCase() || 'jpg';
+    const storagePath = `${workId}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from('artworks')
+      .upload(storagePath, file, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: file.type,
+      });
+
+    if (error) {
+      console.error('Storage upload failed:', error);
+      throw error;
+    }
+
+    return storagePath;
   }
 
-  // Compress image using canvas — returns a Promise<dataURL>
-  // Always outputs JPEG for photos (much smaller than PNG base64)
+  // Upload base64 data (from compression) to Supabase Storage
+  async function uploadBase64ToCloud(base64Data, workId, mimeType) {
+    // Convert base64 to Blob
+    const byteString = atob(base64Data.split(',')[1]);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([ab], { type: mimeType || 'image/jpeg' });
+
+    const ext = mimeType === 'video/mp4' ? 'mp4'
+      : mimeType === 'video/webm' ? 'webm'
+      : 'jpg';
+    const storagePath = `${workId}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from('artworks')
+      .upload(storagePath, blob, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: mimeType || 'image/jpeg',
+      });
+
+    if (error) {
+      console.error('Storage upload failed:', error);
+      throw error;
+    }
+
+    return storagePath;
+  }
+
+  // Save work metadata to Supabase DB
+  async function saveWorkToCloud(work) {
+    const { error } = await supabase
+      .from('works')
+      .upsert({
+        id: work.id,
+        title: work.title,
+        category: work.category,
+        subcategory: work.subcategory || '',
+        media_type: work.mediaType || 'image',
+        description: work.desc || '',
+        storage_path: work.storagePath || '',
+        updated_at: new Date().toISOString(),
+      });
+
+    if (error) {
+      console.error('Failed to save work metadata:', error);
+      throw error;
+    }
+  }
+
+  // Delete work from cloud (DB + Storage)
+  async function deleteWorkFromCloud(work) {
+    // Delete from storage
+    if (work.storagePath) {
+      const { error: storageErr } = await supabase.storage
+        .from('artworks')
+        .remove([work.storagePath]);
+      if (storageErr) console.warn('Storage delete warning:', storageErr);
+    }
+
+    // Delete from DB
+    const { error: dbErr } = await supabase
+      .from('works')
+      .delete()
+      .eq('id', work.id);
+
+    if (dbErr) {
+      console.error('Failed to delete work from DB:', dbErr);
+      throw dbErr;
+    }
+  }
+
+  // Update work metadata in cloud
+  async function updateWorkInCloud(work) {
+    const { error } = await supabase
+      .from('works')
+      .update({
+        title: work.title,
+        category: work.category,
+        subcategory: work.subcategory || '',
+        description: work.desc || '',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', work.id);
+
+    if (error) {
+      console.error('Failed to update work:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================
+  //  IMAGE COMPRESSION (still useful to reduce upload size)
+  // ============================================================
   function compressImage(dataURL, maxWidth, maxHeight, quality) {
     maxWidth = maxWidth || 1920;
     maxHeight = maxHeight || 1920;
@@ -334,86 +363,12 @@
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, w, h);
 
-        // Always use JPEG for better compression (photos don't need transparency)
         const compressed = canvas.toDataURL('image/jpeg', quality);
-
         resolve(compressed.length < dataURL.length ? compressed : dataURL);
       };
       img.onerror = () => resolve(dataURL);
       img.src = dataURL;
     });
-  }
-
-  // Migrate old data: move media from localStorage to IndexedDB
-  async function migrateToIndexedDB() {
-    const oldData = localStorage.getItem(STORAGE_KEY);
-    if (!oldData) return;
-
-    try {
-      const oldWorks = JSON.parse(oldData);
-      // Check if old data contains src (media embedded in localStorage)
-      const hasEmbeddedMedia = oldWorks.some(w => w.src && w.src.length > 500);
-      if (!hasEmbeddedMedia) return; // Already migrated or no media
-
-      console.log('Migrating media from localStorage to IndexedDB...');
-      const mediaItems = [];
-      oldWorks.forEach(w => {
-        if (w.src && w.src.length > 500) {
-          mediaItems.push({ id: w.id, src: w.src });
-        }
-      });
-
-      if (mediaItems.length > 0) {
-        await saveMediaBatch(mediaItems);
-      }
-
-      // Save metadata without src
-      saveWorksMeta(oldWorks);
-      console.log(`Migration complete: ${mediaItems.length} media items moved to IndexedDB`);
-    } catch (e) {
-      console.error('Migration failed:', e);
-    }
-  }
-
-  // Clear old v3 data
-  if (localStorage.getItem('alpha_portfolio_works_v3')) {
-    localStorage.removeItem('alpha_portfolio_works_v3');
-  }
-
-  let works = []; // Will be populated after IndexedDB init
-
-  // Demo works removed — start with empty gallery.
-  // Cleanup any leftover demo data from previous versions.
-  const DEMO_IDS_PREFIX = 'demo_';  // old demo IDs started with "demo_"
-  const OLD_DEMO_TITLES = [
-    '城市黄昏', '静物光影', '山间雾霭', '老巷旧影', '概念角色',
-    '赛博街区', '自然纹理', '建筑韵律', '品牌视觉', '实验动态'
-  ];
-
-  function isLegacyDemo(w) {
-    // Match by id prefix OR by known demo titles
-    if (w.id && typeof w.id === 'string' && w.id.startsWith(DEMO_IDS_PREFIX)) return true;
-    if (OLD_DEMO_TITLES.includes(w.title)) return true;
-    // Also detect SVG-placeholder works (they use data:image/svg+xml as src)
-    if (w.src && typeof w.src === 'string' && w.src.startsWith('data:image/svg+xml')) return true;
-    // Also detect works whose src is missing and id looks like a demo pattern
-    return false;
-  }
-
-  async function purgeOldDemos() {
-    let meta = loadWorksMeta();
-    const demosToRemove = meta.filter(isLegacyDemo);
-    if (demosToRemove.length === 0) return;
-
-    console.log(`Purging ${demosToRemove.length} legacy demo works...`);
-    // Remove media from IndexedDB
-    for (const d of demosToRemove) {
-      await deleteMedia(d.id);
-    }
-    // Filter out demos from metadata
-    meta = meta.filter(w => !isLegacyDemo(w));
-    saveWorksMeta(meta);
-    console.log('Legacy demo purge complete');
   }
 
   // ============================================================
@@ -434,7 +389,6 @@
   const lightbox        = $('#lightbox');
   const toast           = $('#toast');
 
-  // Hero slideshow
   const heroSlideshow   = $('#heroSlideshow');
   const heroIndicators  = $('#heroIndicators');
   const slideCounter    = $('#slideCounter');
@@ -466,14 +420,12 @@
     }
     $$('.nav-link').forEach(l => l.classList.toggle('active', l.dataset.section === currentSectionId));
 
-    // Right-side warm light indicator — visible when scrolling past hero
     if (sectionActiveLight) {
       const isInsideContent = window.scrollY > window.innerHeight * 0.5;
       sectionActiveLight.classList.toggle('visible', isInsideContent);
     }
   }, { passive: true });
 
-  // Mobile menu
   hamburger.addEventListener('click', () => {
     hamburger.classList.toggle('open');
     mobileMenu.classList.toggle('open');
@@ -487,7 +439,6 @@
     });
   });
 
-  // Nav dropdown -> jump to works with category
   $$('.nav-dropdown-menu a').forEach(a => {
     a.addEventListener('click', e => {
       e.preventDefault();
@@ -510,6 +461,8 @@
   // ============================================================
   //  HERO STATS
   // ============================================================
+  let works = [];
+
   function updateStats() {
     const count = cat => works.filter(w => w.category === cat).length;
     animateNumber($('#statPhotos'), count('photography'));
@@ -519,6 +472,7 @@
   }
 
   function animateNumber(el, target) {
+    if (!el) return;
     const current = parseInt(el.textContent) || 0;
     if (current === target) return;
     const duration = 600;
@@ -535,8 +489,8 @@
   // ============================================================
   //  HERO FULLSCREEN SLIDESHOW
   // ============================================================
-  const SLIDE_DURATION = 6000; // ms per slide
-  const SLIDE_TRANSITION = 1800; // CSS transition duration
+  const SLIDE_DURATION = 6000;
+  const SLIDE_TRANSITION = 1800;
   let heroSlides = [];
   let heroSlideIdx = 0;
   let heroTimer = null;
@@ -544,43 +498,47 @@
   let isIdleAutoPlay = false;
 
   function getHeroWorks() {
-    // Use all works as potential hero backgrounds
     return works.filter(w => w.src);
   }
 
   function buildHeroSlides() {
     const heroWorks = getHeroWorks();
-    if (heroWorks.length === 0) return;
+    if (heroWorks.length === 0) {
+      if (heroSlideshow) heroSlideshow.innerHTML = '';
+      if (heroIndicators) heroIndicators.innerHTML = '';
+      heroSlides = [];
+      return;
+    }
 
     heroSlideshow.innerHTML = '';
     heroIndicators.innerHTML = '';
     heroSlides = [];
 
     heroWorks.forEach((w, i) => {
-      // Create slide element
       const slide = document.createElement('div');
       slide.className = 'hero-slide' + (i === 0 ? ' active' : '');
 
-      if (w.mediaType === 'video' && w.src.startsWith('data:video')) {
+      if (w.mediaType === 'video') {
         const video = document.createElement('video');
         video.src = w.src;
         video.muted = true;
         video.loop = true;
         video.playsInline = true;
         video.autoplay = (i === 0);
+        video.crossOrigin = 'anonymous';
         slide.appendChild(video);
       } else {
         const img = document.createElement('img');
         img.src = w.src;
         img.alt = w.title;
         img.loading = (i < 3) ? 'eager' : 'lazy';
+        img.crossOrigin = 'anonymous';
         slide.appendChild(img);
       }
 
       heroSlideshow.appendChild(slide);
       heroSlides.push({ el: slide, work: w });
 
-      // Create indicator dot
       const dot = document.createElement('div');
       dot.className = 'slide-dot' + (i === 0 ? ' active' : '');
       dot.style.setProperty('--slide-duration', SLIDE_DURATION + 'ms');
@@ -597,38 +555,32 @@
     const newIdx = idx % heroSlides.length;
     if (newIdx === prevIdx) return;
 
-    // Previous slide — add leaving effect
     const prevSlide = heroSlides[prevIdx];
     if (prevSlide) {
       prevSlide.el.classList.remove('active');
       prevSlide.el.classList.add('leaving');
       const prevVideo = prevSlide.el.querySelector('video');
       if (prevVideo) prevVideo.pause();
-      // Clean up leaving class after transition
       setTimeout(() => prevSlide.el.classList.remove('leaving'), 2200);
     }
 
     heroSlideIdx = newIdx;
     const currentSlide = heroSlides[heroSlideIdx];
 
-    // Activate new slide
     heroSlides.forEach((s, i) => {
       if (i !== prevIdx) s.el.classList.remove('active', 'leaving');
     });
     currentSlide.el.classList.add('active');
 
-    // Play current video if any
     const currentVideo = currentSlide.el.querySelector('video');
     if (currentVideo) {
       currentVideo.currentTime = 0;
       currentVideo.play().catch(() => {});
     }
 
-    // Update indicators with smooth animation reset
     const dots = heroIndicators.querySelectorAll('.slide-dot');
     dots.forEach((dot, i) => {
       dot.classList.toggle('active', i === heroSlideIdx);
-      // Reset animation by removing and re-adding the element
       if (i === heroSlideIdx) {
         const clone = dot.cloneNode(true);
         clone.addEventListener('click', () => goToSlide(i));
@@ -648,8 +600,8 @@
     const total = heroSlides.length;
     const num = String(idx + 1).padStart(2, '0');
     const tot = String(total).padStart(2, '0');
-    slideCounter.textContent = `${num} / ${tot}`;
-    slideTitle.textContent = heroSlides[idx]?.work?.title || '';
+    if (slideCounter) slideCounter.textContent = `${num} / ${tot}`;
+    if (slideTitle) slideTitle.textContent = heroSlides[idx]?.work?.title || '';
   }
 
   function startSlideshow() {
@@ -665,7 +617,6 @@
     }
   }
 
-  // Idle auto-play: restart slideshow after inactivity
   function resetIdleTimer() {
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
@@ -673,15 +624,11 @@
         startSlideshow();
         isIdleAutoPlay = true;
       }
-    }, 10000); // 10s idle -> start auto-play
+    }, 10000);
   }
 
-  // User activity listeners
   ['mousemove', 'mousedown', 'touchstart', 'keydown', 'scroll'].forEach(evt => {
     document.addEventListener(evt, () => {
-      if (isIdleAutoPlay) {
-        // Don't stop on hero scroll hint usage
-      }
       resetIdleTimer();
     }, { passive: true });
   });
@@ -716,13 +663,11 @@
     for (const [key, label] of Object.entries(subs)) {
       const count = works.filter(w => w.category === currentCategory && w.subcategory === key).length;
       const countHtml = count > 0 ? ` <span style="opacity:.5;font-size:10px">${count}</span>` : '';
-      // Admin gets a delete button on each subcategory
       const delBtn = isAdminAuthenticated
         ? `<span class="sub-tag-del" data-cat="${currentCategory}" data-sub="${key}" title="删除子分类">&times;</span>`
         : '';
       html += `<button class="sub-tag" data-sub="${key}">${label}${countHtml}${delBtn}</button>`;
     }
-    // Admin gets an "add" button at the end
     if (isAdminAuthenticated) {
       html += `<button class="sub-tag sub-tag-add" id="addSubcatBtn" title="添加子分类">+ 添加</button>`;
     }
@@ -730,7 +675,7 @@
 
     subcategoryBar.querySelectorAll('.sub-tag:not(.sub-tag-add)').forEach(tag => {
       tag.addEventListener('click', (e) => {
-        if (e.target.classList.contains('sub-tag-del')) return; // handled separately
+        if (e.target.classList.contains('sub-tag-del')) return;
         subcategoryBar.querySelectorAll('.sub-tag').forEach(t => t.classList.remove('active'));
         tag.classList.add('active');
         currentSubcategory = tag.dataset.sub;
@@ -738,9 +683,8 @@
       });
     });
 
-    // Delete subcategory handlers
     subcategoryBar.querySelectorAll('.sub-tag-del').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const cat = btn.dataset.cat;
         const sub = btn.dataset.sub;
@@ -751,9 +695,8 @@
           msg += `\n\n⚠️ 当前有 ${usedCount} 件作品使用此子分类，删除后这些作品的子分类将显示为空。`;
         }
         if (!confirm(msg)) return;
-        removeSubcategory(cat, sub);
+        await removeSubcategory(cat, sub);
         renderSubcategories();
-        // Refresh selects in open modals
         if (uploadModal.classList.contains('open')) {
           populateSubcategorySelect('uploadSubcategory', $('#uploadCategory').value);
         }
@@ -764,7 +707,6 @@
       });
     });
 
-    // Add subcategory button handler
     const addBtn = document.getElementById('addSubcatBtn');
     if (addBtn) {
       addBtn.addEventListener('click', () => openAddSubcatModal(currentCategory));
@@ -834,8 +776,8 @@
     const subLabel = getSubcategoryLabel(w.category, w.subcategory);
     const isVideo = w.mediaType === 'video';
     const mediaHtml = isVideo
-      ? `<video src="${w.src}" muted loop playsinline preload="metadata"></video>`
-      : `<img src="${w.src}" alt="${w.title}" loading="lazy" />`;
+      ? `<video src="${w.src}" muted loop playsinline preload="metadata" crossorigin="anonymous"></video>`
+      : `<img src="${w.src}" alt="${w.title}" loading="lazy" crossorigin="anonymous" />`;
     const videoBadge = isVideo
       ? '<div class="gallery-card-video-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> VIDEO</div>'
       : '';
@@ -855,7 +797,6 @@
   function bindCardClicks() {
     $$('.gallery-card').forEach(el => {
       el.addEventListener('click', () => openLightbox(el.dataset.id));
-      // Hover play for video cards
       const vid = el.querySelector('video');
       if (vid) {
         el.addEventListener('mouseenter', () => vid.play().catch(() => {}));
@@ -864,7 +805,6 @@
     });
   }
 
-  // Card animation keyframes
   if (!document.getElementById('dynamic-keyframes')) {
     const style = document.createElement('style');
     style.id = 'dynamic-keyframes';
@@ -882,7 +822,6 @@
   // ============================================================
   let pendingFiles = [];
 
-  // Admin password modal elements
   const adminModal     = $('#adminModal');
   const adminPassword  = $('#adminPassword');
   const adminError     = $('#adminError');
@@ -891,7 +830,6 @@
   function openAdminModal(descText) {
     adminPassword.value = '';
     adminError.textContent = '';
-    // Update the description if provided
     const descEl = adminModal.querySelector('.admin-modal-desc');
     if (descEl && descText) {
       descEl.textContent = descText;
@@ -919,8 +857,7 @@
     if (authenticateAdmin(pw, adminRemember.checked)) {
       closeAdminModal();
       showToast('管理员验证成功 ✓');
-      renderSubcategories(); // Refresh to show add/delete buttons
-      // Execute pending action or default to upload
+      renderSubcategories();
       if (pendingAdminAction) {
         const action = pendingAdminAction;
         pendingAdminAction = null;
@@ -932,7 +869,6 @@
       adminError.textContent = '密码错误，请重试';
       adminPassword.value = '';
       adminPassword.focus();
-      // Shake animation
       adminModal.querySelector('.modal-content').style.animation = 'shake .4s ease';
       setTimeout(() => {
         adminModal.querySelector('.modal-content').style.animation = '';
@@ -940,7 +876,6 @@
     }
   });
 
-  // Enter key submits password
   adminPassword.addEventListener('keydown', e => {
     if (e.key === 'Enter') $('#adminSubmit').click();
   });
@@ -961,12 +896,11 @@
     document.body.style.overflow = '';
   }
 
-  // Upload button — check admin first
   function handleUploadClick() {
     if (isAdminAuthenticated) {
       openUploadModal();
     } else {
-      pendingAdminAction = null; // null means default to upload
+      pendingAdminAction = null;
       openAdminModal('请输入管理员密码以访问上传功能');
     }
   }
@@ -1026,34 +960,21 @@
       const isVideo = file.type.startsWith('video/');
       if (!isImage && !isVideo) return;
 
-      // Check file size — warn if very large
-      if (file.size > 10 * 1024 * 1024) {
-        showToast(`文件 ${file.name} 过大（>${Math.round(file.size/1024/1024)}MB），可能导致存储失败`);
+      if (file.size > 50 * 1024 * 1024) {
+        showToast(`文件 ${file.name} 过大（>${Math.round(file.size/1024/1024)}MB），Supabase 免费版限制 50MB`);
+        return;
       }
 
-      const reader = new FileReader();
-      reader.onload = async e => {
-        let src = e.target.result;
+      // Store File object directly for cloud upload
+      pendingFiles.push({
+        name: file.name,
+        file: file,
+        type: isVideo ? 'video' : 'image',
+        previewUrl: URL.createObjectURL(file),
+      });
 
-        // Compress images to save localStorage space
-        if (isImage) {
-          try {
-            src = await compressImage(src, 1920, 1920, 0.75);
-          } catch (err) {
-            console.warn('Image compression failed, using original:', err);
-          }
-        }
-
-        pendingFiles.push({
-          name: file.name,
-          src: src,
-          type: isVideo ? 'video' : 'image'
-        });
-        // Auto-set media type
-        if (isVideo) $('#uploadMediaType').value = 'video';
-        renderPreviews();
-      };
-      reader.readAsDataURL(file);
+      if (isVideo) $('#uploadMediaType').value = 'video';
+      renderPreviews();
     });
   }
 
@@ -1061,8 +982,8 @@
     const container = $('#uploadPreviews');
     container.innerHTML = pendingFiles.map((f, i) => {
       const mediaEl = f.type === 'video'
-        ? `<video src="${f.src}" muted></video>`
-        : `<img src="${f.src}" alt="" />`;
+        ? `<video src="${f.previewUrl}" muted></video>`
+        : `<img src="${f.previewUrl}" alt="" />`;
       return `
         <div class="upload-preview">
           ${mediaEl}
@@ -1073,18 +994,23 @@
     container.querySelectorAll('.upload-preview-remove').forEach(btn => {
       btn.addEventListener('click', e => {
         e.stopPropagation();
+        URL.revokeObjectURL(pendingFiles[+btn.dataset.idx].previewUrl);
         pendingFiles.splice(+btn.dataset.idx, 1);
         renderPreviews();
       });
     });
   }
 
-  // Submit upload
+  // Submit upload — now uploads to Supabase
   $('#uploadSubmit').addEventListener('click', async () => {
     if (pendingFiles.length === 0) {
       showToast('请先选择文件');
       return;
     }
+
+    const submitBtn = $('#uploadSubmit');
+    submitBtn.disabled = true;
+    submitBtn.textContent = '上传中…';
 
     const title = $('#uploadTitle').value.trim() || '未命名作品';
     const category = $('#uploadCategory').value;
@@ -1092,52 +1018,75 @@
     const mediaType = $('#uploadMediaType').value;
     const desc = $('#uploadDesc').value.trim();
 
-    const newWorks = [];
-    const mediaItems = [];
+    let uploadedCount = 0;
 
-    pendingFiles.forEach((f, i) => {
-      const id = 'w' + Date.now() + '_' + i;
-      newWorks.push({
-        id,
-        title: pendingFiles.length === 1 ? title : `${title} (${i + 1})`,
-        category,
-        subcategory,
-        mediaType: f.type || mediaType,
-        desc,
-        src: f.src, // Keep in memory for immediate display
-      });
-      mediaItems.push({ id, src: f.src });
-    });
-
-    // Save media to IndexedDB
     try {
-      await saveMediaBatch(mediaItems);
-    } catch (e) {
-      showToast('图片存储失败，请重试');
-      console.error('IndexedDB save failed:', e);
-      return;
-    }
+      for (let i = 0; i < pendingFiles.length; i++) {
+        const f = pendingFiles[i];
+        const id = 'w' + Date.now() + '_' + i;
+        const workTitle = pendingFiles.length === 1 ? title : `${title} (${i + 1})`;
 
-    // Prepend new works to array
-    works = [...newWorks, ...works];
+        submitBtn.textContent = `上传中 (${i + 1}/${pendingFiles.length})…`;
 
-    // Save metadata (without src) to localStorage
-    const saved = saveWorksMeta(works);
-    if (!saved) {
-      // Rollback media from IndexedDB
-      for (const item of mediaItems) {
-        await deleteMedia(item.id);
+        // Upload file to Supabase Storage
+        let storagePath;
+        if (f.type === 'image' && f.file.size > 2 * 1024 * 1024) {
+          // Compress large images before upload
+          const reader = new FileReader();
+          const dataURL = await new Promise((resolve) => {
+            reader.onload = e => resolve(e.target.result);
+            reader.readAsDataURL(f.file);
+          });
+          const compressed = await compressImage(dataURL, 1920, 1920, 0.8);
+          storagePath = await uploadBase64ToCloud(compressed, id, 'image/jpeg');
+        } else {
+          // Direct upload for small images and videos
+          const ext = f.name.split('.').pop().toLowerCase() || (f.type === 'video' ? 'mp4' : 'jpg');
+          storagePath = `${id}.${ext}`;
+          const { error } = await supabase.storage
+            .from('artworks')
+            .upload(storagePath, f.file, {
+              cacheControl: '3600',
+              upsert: true,
+              contentType: f.file.type,
+            });
+          if (error) throw error;
+        }
+
+        // Save metadata to DB
+        const work = {
+          id,
+          title: workTitle,
+          category,
+          subcategory,
+          mediaType: f.type || mediaType,
+          desc,
+          storagePath,
+          src: `${SUPABASE_URL}/storage/v1/object/public/artworks/${storagePath}`,
+        };
+
+        await saveWorkToCloud(work);
+        works.unshift(work);
+        uploadedCount++;
       }
-      works = works.slice(newWorks.length); // Remove new items
-      return;
-    }
 
-    renderSubcategories();
-    renderGallery();
-    buildHeroSlides();
-    startSlideshow();
-    closeUploadModal();
-    showToast(`已上传 ${pendingFiles.length} 件作品 ✓`);
+      // Clean up preview URLs
+      pendingFiles.forEach(f => URL.revokeObjectURL(f.previewUrl));
+
+      renderSubcategories();
+      renderGallery();
+      buildHeroSlides();
+      startSlideshow();
+      closeUploadModal();
+      showToast(`已上传 ${uploadedCount} 件作品 ✓`);
+
+    } catch (e) {
+      console.error('Upload failed:', e);
+      showToast(`上传失败: ${e.message || '请重试'}`);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span class="btn-glow"></span>确认上传';
+    }
   });
 
   // ============================================================
@@ -1167,12 +1116,14 @@
       lbImage.style.display = 'none';
       lbVideo.style.display = 'block';
       lbVideo.src = w.src;
+      lbVideo.crossOrigin = 'anonymous';
       lbVideo.play().catch(() => {});
     } else {
       lbVideo.style.display = 'none';
       lbVideo.pause();
       lbImage.style.display = 'block';
       lbImage.src = w.src;
+      lbImage.crossOrigin = 'anonymous';
     }
 
     $('#lbTitle').textContent = w.title;
@@ -1221,41 +1172,42 @@
     if (!w) return;
 
     if (!isAdminAuthenticated) {
-      // Require admin auth first
-      pendingAdminAction = () => performDelete(w.id, w.title);
+      pendingAdminAction = () => performDelete(w);
       closeLightbox();
       openAdminModal('请输入管理员密码以删除作品');
       return;
     }
 
-    performDelete(w.id, w.title);
+    performDelete(w);
   });
 
-  async function performDelete(workId, workTitle) {
-    if (!confirm(`确定要删除「${workTitle}」吗？`)) return;
-    works = works.filter(x => x.id !== workId);
-    saveWorks(works);
-    await deleteMedia(workId); // Remove media from IndexedDB
-    closeLightbox();
-    renderSubcategories();
-    renderGallery();
-    buildHeroSlides();
-    startSlideshow();
-    showToast('已删除');
+  async function performDelete(work) {
+    if (!confirm(`确定要删除「${work.title}」吗？`)) return;
+
+    try {
+      showToast('正在删除…');
+      await deleteWorkFromCloud(work);
+      works = works.filter(x => x.id !== work.id);
+      closeLightbox();
+      renderSubcategories();
+      renderGallery();
+      buildHeroSlides();
+      startSlideshow();
+      showToast('已删除 ✓');
+    } catch (e) {
+      console.error('Delete failed:', e);
+      showToast('删除失败，请重试');
+    }
   }
 
   // ============================================================
-  //  WATERMARK DOWNLOAD — Adds "tangyuan-dreamhouse" watermark
-  //  at the bottom-right corner for non-admin downloads.
-  //  Uses Canvas API to composite watermark onto image/video frame
-  //  ============================================================
-
+  //  WATERMARK DOWNLOAD
+  // ============================================================
   function addWatermarkAndDownload(sourceEl, filename, isVideo) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
 
     let sourceWidth, sourceHeight;
-
     if (isVideo) {
       sourceWidth = sourceEl.videoWidth || sourceEl.width || 1920;
       sourceHeight = sourceEl.videoHeight || sourceEl.height || 1080;
@@ -1266,19 +1218,14 @@
 
     canvas.width = sourceWidth;
     canvas.height = sourceHeight;
-
-    // Draw the source
     ctx.drawImage(sourceEl, 0, 0, sourceWidth, sourceHeight);
 
-    // Determine if admin — if admin, skip watermark
     if (!isAdminAuthenticated) {
       const minDim = Math.min(sourceWidth, sourceHeight);
       const fontSize = Math.max(16, Math.round(minDim * 0.028));
       const padding = Math.round(fontSize * 0.8);
 
       ctx.save();
-
-      // Draw "tangyuan-dreamhouse" at bottom-right
       ctx.font = `500 ${fontSize}px "Inter", "Space Grotesk", sans-serif`;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'bottom';
@@ -1287,20 +1234,16 @@
       const x = sourceWidth - padding;
       const y = sourceHeight - padding;
 
-      // Subtle shadow for readability on any background
       ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
       ctx.shadowBlur = fontSize * 0.3;
       ctx.shadowOffsetX = 1;
       ctx.shadowOffsetY = 1;
-
-      // Semi-transparent white text
       ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
       ctx.fillText(text, x, y);
 
       ctx.restore();
     }
 
-    // Convert to blob and trigger download
     canvas.toBlob(blob => {
       if (!blob) {
         showToast('下载失败，请重试');
@@ -1318,20 +1261,19 @@
     }, 'image/png', 0.95);
   }
 
-  // Download button click handler
   $('#lbDownload').addEventListener('click', () => {
     const w = lbFiltered[lbIndex];
     if (!w) return;
 
     const isVideo = w.mediaType === 'video';
-    const extension = isAdminAuthenticated ? (isVideo ? '.mp4' : '.png') : '.png';
-    const filename = (w.title || 'tangyuan_work') + extension;
+    const filename = (w.title || 'tangyuan_work') + (isAdminAuthenticated && isVideo ? '.mp4' : '.png');
 
     if (isAdminAuthenticated && !isVideo) {
-      // Admin: direct download without watermark for images
+      // Admin: direct download original
       const a = document.createElement('a');
       a.href = w.src;
       a.download = filename;
+      a.target = '_blank';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1340,10 +1282,10 @@
     }
 
     if (isAdminAuthenticated && isVideo) {
-      // Admin: direct download for video
       const a = document.createElement('a');
       a.href = w.src;
       a.download = filename;
+      a.target = '_blank';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1353,7 +1295,6 @@
 
     // Non-admin: add watermark
     if (isVideo) {
-      // For video, capture current frame as image with watermark
       const video = $('#lbVideo');
       if (video && video.readyState >= 2) {
         addWatermarkAndDownload(video, w.title + '_frame.png', true);
@@ -1361,14 +1302,12 @@
         showToast('视频未加载完成，请稍后重试');
       }
     } else {
-      // For images, load into an Image object and watermark
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         addWatermarkAndDownload(img, filename, false);
       };
       img.onerror = () => {
-        // Fallback: try downloading the visible image directly
         const lbImg = $('#lbImage');
         if (lbImg) {
           addWatermarkAndDownload(lbImg, filename, false);
@@ -1390,7 +1329,6 @@
     if (!w) return;
 
     if (!isAdminAuthenticated) {
-      // Require admin auth first
       pendingAdminAction = () => openEditForWork(w);
       closeLightbox();
       openAdminModal('请输入管理员密码以编辑作品');
@@ -1420,19 +1358,33 @@
   $('#editModalClose').addEventListener('click', closeEditModal);
   editModal.querySelector('.modal-backdrop').addEventListener('click', closeEditModal);
 
-  $('#editSubmit').addEventListener('click', () => {
+  $('#editSubmit').addEventListener('click', async () => {
     const idx = works.findIndex(w => w.id === editingId);
     if (idx < 0) return;
+
+    const submitBtn = $('#editSubmit');
+    submitBtn.disabled = true;
+    submitBtn.textContent = '保存中…';
+
     works[idx].title = $('#editTitle').value.trim() || '未命名';
     works[idx].category = $('#editCategory').value;
     works[idx].subcategory = $('#editSubcategory').value;
     works[idx].desc = $('#editDesc').value.trim();
-    saveWorks(works);
-    renderSubcategories();
-    renderGallery();
-    buildHeroSlides();
-    closeEditModal();
-    showToast('已保存修改 ✓');
+
+    try {
+      await updateWorkInCloud(works[idx]);
+      renderSubcategories();
+      renderGallery();
+      buildHeroSlides();
+      closeEditModal();
+      showToast('已保存修改 ✓');
+    } catch (e) {
+      console.error('Edit failed:', e);
+      showToast('保存失败，请重试');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span class="btn-glow"></span>保存修改';
+    }
   });
 
   // ============================================================
@@ -1459,22 +1411,20 @@
   $('#addSubcatClose').addEventListener('click', closeAddSubcatModal);
   addSubcatModal.querySelector('.modal-backdrop').addEventListener('click', closeAddSubcatModal);
 
-  $('#addSubcatSubmit').addEventListener('click', () => {
+  $('#addSubcatSubmit').addEventListener('click', async () => {
     const label = $('#addSubcatLabel').value.trim();
     if (!label) {
       showToast('请输入子分类名称');
       return;
     }
-    // Auto-generate a safe key from label
     const key = 'custom_' + Date.now().toString(36);
-    const ok = addSubcategory(addSubcatTargetCat, key, label);
+    const ok = await addSubcategory(addSubcatTargetCat, key, label);
     if (!ok) {
       showToast('添加失败，子分类可能已存在');
       return;
     }
     closeAddSubcatModal();
     renderSubcategories();
-    // Refresh selects in open modals
     if (uploadModal.classList.contains('open')) {
       populateSubcategorySelect('uploadSubcategory', $('#uploadCategory').value);
     }
@@ -1484,7 +1434,6 @@
     showToast(`已添加子分类「${label}」✓`);
   });
 
-  // Enter key submits
   $('#addSubcatLabel').addEventListener('keydown', e => {
     if (e.key === 'Enter') $('#addSubcatSubmit').click();
   });
@@ -1502,10 +1451,8 @@
   });
 
   // ============================================================
-  //  SCROLL REVEAL — Enhanced Section Transitions
+  //  SCROLL REVEAL
   // ============================================================
-
-  // Section-level reveal observer
   const sectionObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -1515,7 +1462,6 @@
     });
   }, { threshold: 0.08, rootMargin: '0px 0px -60px 0px' });
 
-  // Gallery row reveal observer
   const rowObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -1525,26 +1471,19 @@
     });
   }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
 
-  // Setup section reveals
   function setupSectionReveals() {
-    // Mark sections with reveal class
     document.querySelectorAll('.about-section, .contact-section').forEach(el => {
       el.classList.add('section-reveal');
       sectionObserver.observe(el);
     });
-
-    // Mark children with reveal-child class for stagger
     document.querySelectorAll('.about-text > *, .contact-grid .contact-card').forEach(el => {
       el.classList.add('reveal-child');
     });
-
-    // Section dividers
     document.querySelectorAll('.section-divider').forEach(el => {
       sectionObserver.observe(el);
     });
   }
 
-  // Re-observe gallery rows after render
   function observeGalleryRows() {
     document.querySelectorAll('.gallery-row').forEach((row, i) => {
       row.style.transitionDelay = `${i * 0.12}s`;
@@ -1552,7 +1491,6 @@
     });
   }
 
-  // Smooth scroll with offset for nav links
   document.querySelectorAll('a[href^="#"]').forEach(link => {
     link.addEventListener('click', (e) => {
       const target = document.querySelector(link.getAttribute('href'));
@@ -1572,37 +1510,20 @@
   }
 
   // ============================================================
-  //  INIT — Async: open IndexedDB, migrate, load, render
+  //  INIT — Async: load from Supabase cloud
   // ============================================================
   async function initApp() {
     try {
-      await openDB();
+      // Load subcategories from cloud
+      await loadCustomSubcategories();
+
+      // Load works from Supabase DB
+      works = await loadWorksFromCloud();
+      console.log(`Loaded ${works.length} works from cloud`);
+
     } catch (e) {
-      console.warn('IndexedDB unavailable, falling back to localStorage-only mode');
-    }
-
-    // Migrate old localStorage data (with embedded media) to IndexedDB
-    await migrateToIndexedDB();
-
-    // Purge any leftover demo/placeholder data from earlier versions
-    await purgeOldDemos();
-
-    // Load metadata from localStorage
-    works = loadWorksMeta();
-
-    // If works have no src yet, load media from IndexedDB
-    if (works.length > 0 && !works[0].src) {
-      const mediaMap = await loadAllMedia();
-      works.forEach(w => {
-        if (mediaMap[w.id]) {
-          w.src = mediaMap[w.id];
-        }
-      });
-    }
-
-    // If no works, gallery will show empty state
-    if (works.length === 0) {
-      // Clean start — no demo works
+      console.error('Failed to load from cloud:', e);
+      showToast('加载数据失败，请刷新重试');
     }
 
     renderSubcategories();
