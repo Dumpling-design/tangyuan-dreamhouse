@@ -314,9 +314,39 @@
 
   let works = []; // Will be populated after IndexedDB init
 
-  // Demo works removed — start with empty gallery
+  // Demo works removed — start with empty gallery.
+  // Cleanup any leftover demo data from previous versions.
+  const DEMO_IDS_PREFIX = 'demo_';  // old demo IDs started with "demo_"
+  const OLD_DEMO_TITLES = [
+    '城市黄昏', '静物光影', '山间雾霭', '老巷旧影', '概念角色',
+    '赛博街区', '自然纹理', '建筑韵律', '品牌视觉', '实验动态'
+  ];
 
-  // Demo init is deferred to after IndexedDB opens — see initApp()
+  function isLegacyDemo(w) {
+    // Match by id prefix OR by known demo titles
+    if (w.id && typeof w.id === 'string' && w.id.startsWith(DEMO_IDS_PREFIX)) return true;
+    if (OLD_DEMO_TITLES.includes(w.title)) return true;
+    // Also detect SVG-placeholder works (they use data:image/svg+xml as src)
+    if (w.src && typeof w.src === 'string' && w.src.startsWith('data:image/svg+xml')) return true;
+    // Also detect works whose src is missing and id looks like a demo pattern
+    return false;
+  }
+
+  async function purgeOldDemos() {
+    let meta = loadWorksMeta();
+    const demosToRemove = meta.filter(isLegacyDemo);
+    if (demosToRemove.length === 0) return;
+
+    console.log(`Purging ${demosToRemove.length} legacy demo works...`);
+    // Remove media from IndexedDB
+    for (const d of demosToRemove) {
+      await deleteMedia(d.id);
+    }
+    // Filter out demos from metadata
+    meta = meta.filter(w => !isLegacyDemo(w));
+    saveWorksMeta(meta);
+    console.log('Legacy demo purge complete');
+  }
 
   // ============================================================
   //  DOM REFS
@@ -1389,6 +1419,9 @@
 
     // Migrate old localStorage data (with embedded media) to IndexedDB
     await migrateToIndexedDB();
+
+    // Purge any leftover demo/placeholder data from earlier versions
+    await purgeOldDemos();
 
     // Load metadata from localStorage
     works = loadWorksMeta();
